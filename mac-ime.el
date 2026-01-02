@@ -437,15 +437,17 @@ CONFIG is the configuration (symbol or cons)."
 ;;;###autoload
 (defun mac-ime-auto-deactivate (func)
   "Add advice to FUNC to deactivate IME during its execution.
+FUNC can be a function symbol or a cons cell (FUNCTION . ARG-INDEX).
+If it is a cons cell, ARG-INDEX specifies the position of the
+INHERIT-INPUT-METHOD argument.  If the argument is non-nil and the current
+input method is `mac-ime-input-method`, IME will remain active.  Otherwise,
+IME is deactivated.
 The IME state is restored after FUNC completes."
   (let* ((f-sym (if (consp func) (car func) func))
          (advice-name (intern (format "mac-ime--auto-deactivate-%s" f-sym))))
     (fset advice-name
           (lambda (orig-fun &rest args)
-            (let ((current-config (cl-find f-sym mac-ime-auto-deactivate-functions
-                                           :test (lambda (f item)
-                                                   (eq f (if (consp item) (car item) item))))))
-              (mac-ime--auto-deactivate-body orig-fun args (or current-config f-sym)))))
+            (mac-ime--auto-deactivate-body orig-fun args func)))
     (advice-add f-sym :around advice-name)))
 
 (defun mac-ime--temporary-deactivate-advice (&rest _args)

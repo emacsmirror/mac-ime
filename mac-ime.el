@@ -152,9 +152,10 @@ If nil, `mac-ime-last-on-input-source` or the first input source NOT matching
                                                map-y-or-n-p)
   "List of functions to automatically deactivate IME during execution.
 Each element can be a function symbol or a cons cell (FUNCTION . ARG-INDEX).
-If it is a cons cell, ARG-INDEX specifies the position of the INHERIT-INPUT-METHOD argument.
-If the argument is non-nil and the current input method is `mac-ime-input-method`,
-IME will remain active.  Otherwise, IME is deactivated."
+If it is a cons cell, ARG-INDEX specifies the position of the
+INHERIT-INPUT-METHOD argument.
+If the argument is non-nil and the current input method is
+`mac-ime-input-method`, IME will remain active.  Otherwise, IME is deactivated."
   :type '(repeat (choice function (cons function integer)))
   :group 'mac-ime)
 
@@ -281,10 +282,10 @@ MODIFIERS is the modifier flags."
   (unless (featurep 'mac-ime-module)
     (if (file-exists-p mac-ime-module-path)
         (module-load mac-ime-module-path)
-      (message "mac-ime: Module not found at %s." mac-ime-module-path))))
+      (error "mac-ime: Module not found at %s" mac-ime-module-path))))
 
-(defvar mac-ime--last-buffer nil
-  "The buffer that was current during the last poll.")
+(defvar mac-ime--last-selected-buffer nil
+  "The buffer that was current during the last window selection change.")
 
 (defun mac-ime-handler (keycode modifiers)
   "Internal handler called by the C module.
@@ -296,11 +297,9 @@ MODIFIERS is the modifier flags."
   ;; Skip synchronization if the buffer has changed recently.
   ;; This prevents race conditions where the poll runs before window-selection-change-functions.
   (let ((current (current-buffer)))
-    (if (eq current mac-ime--last-buffer)
-        (progn
-          (mac-ime--check-input-source-change)
-          (mac-ime--sync-input-method))
-      (setq mac-ime--last-buffer current))))
+    (when (eq current mac-ime--last-selected-buffer)
+      (mac-ime--check-input-source-change)
+      (mac-ime--sync-input-method))))
   
 
 (defun mac-ime--check-input-source-change ()
@@ -325,7 +324,8 @@ off-source, others to on-source."
     (mac-ime-internal-poll #'mac-ime-handler)))
 
 (defun mac-ime-activate-input-method (input-method)
-  "Activate the mac-ime input method."
+  "Activate the mac-ime input method.
+INPUT-METHOD is the name of the input method to activate."
   (mac-ime--debug 2 "mac-ime-activate-input-method called in %s buffer %s" input-method (current-buffer))
   (mac-ime-activate-ime)
   (setq deactivate-current-input-method-function #'mac-ime-deactivate-ime)
@@ -339,6 +339,7 @@ off-source, others to on-source."
 Activate IME if `current-input-method` is `mac-ime-input-method`.
 Otherwise, deactivate IME."
   (mac-ime--debug 2 "mac-ime-update-state: current-input-method=%s buffer=%s" current-input-method (current-buffer))
+  (setq mac-ime--last-selected-buffer (current-buffer))
   (unless mac-ime--ignore-input-source-change
     (if (equal current-input-method mac-ime-input-method)
         (mac-ime-activate-ime)
@@ -436,15 +437,17 @@ CONFIG is the configuration (symbol or cons)."
 ;;;###autoload
 (defun mac-ime-auto-deactivate (func)
   "Add advice to FUNC to deactivate IME during its execution.
+FUNC can be a function symbol or a cons cell (FUNCTION . ARG-INDEX).
+If it is a cons cell, ARG-INDEX specifies the position of the
+INHERIT-INPUT-METHOD argument.  If the argument is non-nil and the current
+input method is `mac-ime-input-method`, IME will remain active.  Otherwise,
+IME is deactivated.
 The IME state is restored after FUNC completes."
   (let* ((f-sym (if (consp func) (car func) func))
          (advice-name (intern (format "mac-ime--auto-deactivate-%s" f-sym))))
     (fset advice-name
           (lambda (orig-fun &rest args)
-            (let ((current-config (cl-find f-sym mac-ime-auto-deactivate-functions
-                                           :test (lambda (f item)
-                                                   (eq f (if (consp item) (car item) item))))))
-              (mac-ime--auto-deactivate-body orig-fun args (or current-config f-sym)))))
+            (mac-ime--auto-deactivate-body orig-fun args func)))
     (advice-add f-sym :around advice-name)))
 
 (defun mac-ime--temporary-deactivate-advice (&rest _args)

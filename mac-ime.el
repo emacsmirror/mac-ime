@@ -40,9 +40,6 @@
 (defvar mac-ime-timer nil
   "Timer object for polling events.")
 
-(defvar mac-ime-poll-interval 0.05
-  "Interval in seconds to poll for events.")
-
 (defcustom mac-ime-functions nil
   "List of functions to call when a key event occurs.
 Each function is called with two arguments: (KEYCODE MODIFIERS)."
@@ -262,7 +259,9 @@ The original input source is restored in `pre-command-hook`."
         (setq mac-ime--saved-input-source current)
         (setq mac-ime--ignore-input-source-change t)
         (mac-ime-set-input-source source)
-        (add-hook 'pre-command-hook #'mac-ime--restore-input-source)))))
+        ;; We need to restore the input source AFTER mac-ime-poll handles any pending events.
+        ;; mac-ime-poll has a depth of -100, so we use 100 here to ensure this runs later.
+        (add-hook 'pre-command-hook #'mac-ime--restore-input-source 100)))))
 
 (defun mac-ime-deactivate-ime-on-prefix (keycode modifiers)
   "Deactivate IME when a prefix key defined in `mac-ime-prefix-keys` is pressed.
@@ -354,7 +353,11 @@ Otherwise, deactivate IME."
   (when (featurep 'mac-ime-module)
     (mac-ime-internal-start)
     (unless mac-ime-timer
-      (setq mac-ime-timer (run-with-timer 0 mac-ime-poll-interval #'mac-ime-poll))
+      (setq mac-ime-timer (run-with-idle-timer 0 t #'mac-ime-poll))
+      ;; Use a negative depth (-100) to ensure mac-ime-poll runs BEFORE other hooks,
+      ;; specifically before mac-ime--restore-input-source (which has depth 100).
+      ;; This prevents the IME from being restored before the poll can detect the event.
+      (add-hook 'pre-command-hook #'mac-ime-poll -100)
       (add-hook 'mac-ime-functions #'mac-ime-deactivate-ime-on-prefix)
       (dolist (func mac-ime-auto-deactivate-functions)
         (mac-ime-auto-deactivate func))
@@ -372,6 +375,7 @@ Otherwise, deactivate IME."
   (when mac-ime-timer
     (cancel-timer mac-ime-timer)
     (setq mac-ime-timer nil))
+  (remove-hook 'pre-command-hook #'mac-ime-poll)
   (when (featurep 'mac-ime-module)
     (remove-hook 'mac-ime-functions #'mac-ime-deactivate-ime-on-prefix)
     (mac-ime-internal-stop)

@@ -22,6 +22,7 @@
 (declare-function mac-ime-internal-get-input-source-list nil ())
 (declare-function mac-ime-internal-get-input-source nil ())
 (declare-function mac-ime-internal-set-input-source nil (source-id))
+(declare-function mac-ime-internal-converting-p nil ())
 (declare-function mac-ime-internal-poll nil (hook-func))
 (declare-function mac-ime-internal-start nil ())
 (declare-function mac-ime-internal-stop nil ())
@@ -269,7 +270,8 @@ This function is intended to be added to `mac-ime-functions`.
 KEYCODE is the virtual key code.
 MODIFIERS is the modifier flags."
   (when (and (not mac-ime--saved-input-source)
-             (equal current-input-method mac-ime-input-method))
+             (equal current-input-method mac-ime-input-method)
+             (not (mac-ime-converting-p)))
     (let ((prefix-keys (or mac-ime-prefix-keys (mac-ime-generate-prefix-keys))))
       (cl-loop for (k . m) in prefix-keys
                if (and (= keycode k)
@@ -403,6 +405,13 @@ Otherwise, deactivate IME."
   (mac-ime--load-module)
   (when (featurep 'mac-ime-module)
     (mac-ime-internal-set-input-source source-id)))
+
+;;;###autoload
+(defun mac-ime-converting-p ()
+  "Check if IME is converting."
+  (mac-ime--load-module)
+  (when (featurep 'mac-ime-module)
+    (mac-ime-internal-converting-p)))
 
 ;;;###autoload
 (defun mac-ime-get-input-source-list ()

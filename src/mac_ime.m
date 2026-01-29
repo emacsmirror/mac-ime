@@ -155,6 +155,21 @@ static emacs_value Fmac_ime_set_input_source(emacs_env *env, ptrdiff_t nargs, em
     return (status == noErr) ? env->intern(env, "t") : env->intern(env, "nil");
 }
 
+// --- Module Function: Check if converting ---
+static emacs_value Fmac_ime_converting_p(emacs_env *env, ptrdiff_t nargs, emacs_value args[], void *data) {
+    NSTextInputContext *context = [NSTextInputContext currentInputContext];
+    if (!context) {
+        return env->intern(env, "nil");
+    }
+    
+    id<NSTextInputClient> client = [context client];
+    if (client && [client hasMarkedText]) {
+        return env->intern(env, "t");
+    }
+    
+    return env->intern(env, "nil");
+}
+
 // --- Module Function: Get Input Source List ---
 static emacs_value Fmac_ime_get_input_source_list(emacs_env *env, ptrdiff_t nargs, emacs_value args[], void *data) {
     // Filter for selectable input sources (visible in the menu)
@@ -227,6 +242,12 @@ int emacs_module_init(struct emacs_runtime *ert) {
     emacs_value sym_set_source = env->intern(env, "mac-ime-internal-set-input-source");
     emacs_value args_set_source[] = { sym_set_source, func_set_source };
     env->funcall(env, fset, 2, args_set_source);
+
+    // Register `mac-ime-internal-converting-p`
+    emacs_value func_converting_p = env->make_function(env, 0, 0, Fmac_ime_converting_p, "Check if IME is converting.", NULL);
+    emacs_value sym_converting_p = env->intern(env, "mac-ime-internal-converting-p");
+    emacs_value args_converting_p[] = { sym_converting_p, func_converting_p };
+    env->funcall(env, fset, 2, args_converting_p);
 
     // Provide the feature
     emacs_value provide = env->intern(env, "provide");

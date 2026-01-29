@@ -26,11 +26,15 @@
     "com.apple.inputmethod.Kotoeri.KanaTyping")
   "List of available input sources.")
 
+(defvar mac-ime-mock-converting nil
+  "Whether the mock IME is converting.")
+
 (defun mac-ime-mock-reset ()
   "Reset the mock state."
   (setq mac-ime-mock-running nil
         mac-ime-mock-event-queue nil
-        mac-ime-mock-current-source "com.apple.keylayout.US"))
+        mac-ime-mock-current-source "com.apple.keylayout.US"
+        mac-ime-mock-converting nil))
 
 (defun mac-ime-mock-simulate-event (keycode modifiers)
   "Add a simulated event to the queue."
@@ -67,6 +71,9 @@
 
 (defun mac-ime-internal-get-input-source-list ()
   mac-ime-mock-source-list)
+
+(defun mac-ime-internal-converting-p ()
+  mac-ime-mock-converting)
 
 ;; Override mac-ime--load-module to do nothing but ensure our mocks are ready
 (defun mac-ime-mock-enable ()

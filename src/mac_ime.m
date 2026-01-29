@@ -9,9 +9,19 @@ int plugin_is_GPL_compatible;
 static id eventMonitor = nil;
 static pthread_mutex_t queueMutex;
 static NSMutableArray *eventQueue;
+static BOOL processingEvent = NO;
+static BOOL currentEventConverting = NO;
+
+// --- Helper: Check if converting ---
+BOOL is_converting_helper() {
+    NSTextInputContext *context = [NSTextInputContext currentInputContext];
+    if (!context) return NO;
+    id<NSTextInputClient> client = [context client];
+    return (client && [client hasMarkedText]);
+}
 
 // --- Helper: Add event to queue ---
-void enqueue_event_data(long keyCode, unsigned long modifierFlags) {
+void enqueue_event_data(long keyCode, unsigned long modifierFlags, BOOL converting) {
     pthread_mutex_lock(&queueMutex);
     if (!eventQueue) {
         eventQueue = [[NSMutableArray alloc] init];
@@ -19,7 +29,8 @@ void enqueue_event_data(long keyCode, unsigned long modifierFlags) {
     
     NSDictionary *eventData = @{
         @"keyCode": @(keyCode),
-        @"modifiers": @(modifierFlags)
+        @"modifiers": @(modifierFlags),
+        @"converting": @(converting)
     };
     [eventQueue addObject:eventData];
     pthread_mutex_unlock(&queueMutex);
@@ -43,9 +54,10 @@ static emacs_value Fmac_ime_start(emacs_env *env, ptrdiff_t nargs, emacs_value a
         // 1. Capture data
         long keyCode = [event keyCode];
         unsigned long flags = [event modifierFlags];
+        BOOL converting = is_converting_helper();
         
         // 2. Enqueue for Lisp to pick up later
-        enqueue_event_data(keyCode, flags);
+        enqueue_event_data(keyCode, flags, converting);
         
         // 3. Return event (return nil to consume/block it, return event to pass it on)
         return event; 
@@ -81,9 +93,16 @@ static emacs_value Fmac_ime_poll(emacs_env *env, ptrdiff_t nargs, emacs_value ar
     }
 
     // Process queue
+    // Save previous state to handle re-entrancy (e.g. if hook triggers another poll)
+    BOOL previousProcessingEvent = processingEvent;
+    
+    processingEvent = YES;
     for (NSDictionary *evt in currentEvents) {
         long keyCode = [evt[@"keyCode"] longValue];
         unsigned long mods = [evt[@"modifiers"] unsignedLongValue];
+        
+        BOOL previousConverting = currentEventConverting;
+        currentEventConverting = [evt[@"converting"] boolValue];
 
         // Convert C values to Lisp values
         emacs_value lisp_keycode = env->make_integer(env, keyCode);
@@ -92,7 +111,11 @@ static emacs_value Fmac_ime_poll(emacs_env *env, ptrdiff_t nargs, emacs_value ar
         // Call the Lisp hook: (funcall hook-func keycode modifiers)
         emacs_value func_args[] = { hook_func, lisp_keycode, lisp_mods };
         env->funcall(env, env->intern(env, "funcall"), 3, func_args);
+        
+        // Restore state for next iteration or outer loop
+        currentEventConverting = previousConverting;
     }
+    processingEvent = previousProcessingEvent;
 
     return env->make_integer(env, [currentEvents count]);
 }
@@ -157,13 +180,11 @@ static emacs_value Fmac_ime_set_input_source(emacs_env *env, ptrdiff_t nargs, em
 
 // --- Module Function: Check if converting ---
 static emacs_value Fmac_ime_converting_p(emacs_env *env, ptrdiff_t nargs, emacs_value args[], void *data) {
-    NSTextInputContext *context = [NSTextInputContext currentInputContext];
-    if (!context) {
-        return env->intern(env, "nil");
+    if (processingEvent) {
+        return currentEventConverting ? env->intern(env, "t") : env->intern(env, "nil");
     }
-    
-    id<NSTextInputClient> client = [context client];
-    if (client && [client hasMarkedText]) {
+
+    if (is_converting_helper()) {
         return env->intern(env, "t");
     }
     

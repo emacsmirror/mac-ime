@@ -1,8 +1,7 @@
 ---
 agent: 'agent'
 description: 'コミットメッセージを生成する'
-model: 'Gemini 3 Flash (Preview)'
-tools: ['search', 'todo']
+tools: ['read/readFile', 'search', 'todo']
 ---
 
 今回のセッション内容からコミットメッセージを英語で生成してください。

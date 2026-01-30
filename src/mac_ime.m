@@ -10,8 +10,16 @@ static id eventMonitor = nil;
 static pthread_mutex_t queueMutex;
 static NSMutableArray *eventQueue;
 
+// --- Helper: Check if converting ---
+BOOL is_converting_helper() {
+    NSTextInputContext *context = [NSTextInputContext currentInputContext];
+    if (!context) return NO;
+    id<NSTextInputClient> client = [context client];
+    return (client && [client hasMarkedText]);
+}
+
 // --- Helper: Add event to queue ---
-void enqueue_event_data(long keyCode, unsigned long modifierFlags) {
+void enqueue_event_data(long keyCode, unsigned long modifierFlags, BOOL converting) {
     pthread_mutex_lock(&queueMutex);
     if (!eventQueue) {
         eventQueue = [[NSMutableArray alloc] init];
@@ -19,7 +27,8 @@ void enqueue_event_data(long keyCode, unsigned long modifierFlags) {
     
     NSDictionary *eventData = @{
         @"keyCode": @(keyCode),
-        @"modifiers": @(modifierFlags)
+        @"modifiers": @(modifierFlags),
+        @"converting": @(converting)
     };
     [eventQueue addObject:eventData];
     pthread_mutex_unlock(&queueMutex);
@@ -43,9 +52,10 @@ static emacs_value Fmac_ime_start(emacs_env *env, ptrdiff_t nargs, emacs_value a
         // 1. Capture data
         long keyCode = [event keyCode];
         unsigned long flags = [event modifierFlags];
+        BOOL converting = is_converting_helper();
         
         // 2. Enqueue for Lisp to pick up later
-        enqueue_event_data(keyCode, flags);
+        enqueue_event_data(keyCode, flags, converting);
         
         // 3. Return event (return nil to consume/block it, return event to pass it on)
         return event; 
@@ -84,14 +94,16 @@ static emacs_value Fmac_ime_poll(emacs_env *env, ptrdiff_t nargs, emacs_value ar
     for (NSDictionary *evt in currentEvents) {
         long keyCode = [evt[@"keyCode"] longValue];
         unsigned long mods = [evt[@"modifiers"] unsignedLongValue];
+        BOOL converting = [evt[@"converting"] boolValue];
 
         // Convert C values to Lisp values
         emacs_value lisp_keycode = env->make_integer(env, keyCode);
         emacs_value lisp_mods = env->make_integer(env, mods);
+        emacs_value lisp_converting = converting ? env->intern(env, "t") : env->intern(env, "nil");
 
-        // Call the Lisp hook: (funcall hook-func keycode modifiers)
-        emacs_value func_args[] = { hook_func, lisp_keycode, lisp_mods };
-        env->funcall(env, env->intern(env, "funcall"), 3, func_args);
+        // Call the Lisp hook: (funcall hook-func keycode modifiers converting-p)
+        emacs_value func_args[] = { hook_func, lisp_keycode, lisp_mods, lisp_converting };
+        env->funcall(env, env->intern(env, "funcall"), 4, func_args);
     }
 
     return env->make_integer(env, [currentEvents count]);

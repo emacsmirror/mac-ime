@@ -26,16 +26,20 @@
     "com.apple.inputmethod.Kotoeri.KanaTyping")
   "List of available input sources.")
 
+(defvar mac-ime-mock-converting nil
+  "Whether the mock IME is converting.")
+
 (defun mac-ime-mock-reset ()
   "Reset the mock state."
   (setq mac-ime-mock-running nil
         mac-ime-mock-event-queue nil
-        mac-ime-mock-current-source "com.apple.keylayout.US"))
+        mac-ime-mock-current-source "com.apple.keylayout.US"
+        mac-ime-mock-converting nil))
 
 (defun mac-ime-mock-simulate-event (keycode modifiers)
   "Add a simulated event to the queue."
   (setq mac-ime-mock-event-queue
-        (append mac-ime-mock-event-queue (list (cons keycode modifiers)))))
+        (append mac-ime-mock-event-queue (list (list keycode modifiers mac-ime-mock-converting)))))
 
 ;; Mock implementations of internal functions
 
@@ -50,7 +54,7 @@
 (defun mac-ime-internal-poll (callback)
   (let ((count 0))
     (dolist (event mac-ime-mock-event-queue)
-      (funcall callback (car event) (cdr event))
+      (funcall callback (nth 0 event) (nth 1 event) (nth 2 event))
       (setq count (1+ count)))
     (setq mac-ime-mock-event-queue nil)
     (if (> count 0) count nil)))

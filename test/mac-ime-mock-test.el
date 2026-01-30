@@ -46,7 +46,7 @@
   (mac-ime-internal-start)
   
   (let ((called nil))
-    (add-hook 'mac-ime-functions (lambda (k m) (setq called (list k m))))
+    (add-hook 'mac-ime-functions (lambda (k m c) (setq called (list k m c))))
     
     ;; Simulate 'x' key (keycode 7) with no modifiers
     (mac-ime-mock-simulate-event 7 0)
@@ -54,7 +54,7 @@
     ;; Poll should trigger the hook
     (mac-ime-poll)
     
-    (should (equal called '(7 0)))))
+    (should (equal called '(7 0 nil)))))
 
 (ert-deftest mac-ime-auto-deactivate-on-prefix-test ()
   "Test automatic IME deactivation on prefix key."
@@ -150,5 +150,32 @@
   (mac-ime--sync-input-method)
   
   (should (equal current-input-method nil)))
+
+
+(ert-deftest mac-ime-auto-deactivate-on-prefix-converting-test ()
+  "Test that IME deactivation on prefix key is skipped when converting."
+  (mac-ime-test-reset)
+  ;; Setup: IME is ON
+  (mac-ime-internal-set-input-source "com.apple.inputmethod.Kotoeri.RomajiTyping")
+  (setq current-input-method mac-ime-input-method)
+  
+  ;; Configure prefix key: C-j
+  (defconst mac-ime-kVK_ANSI_J 38)
+  (let ((mac-ime-prefix-keys `((,mac-ime-kVK_ANSI_J . ,mac-ime-NSEventModifierFlagControl)))
+        (mac-ime-ime-off-input-source "com.apple.keylayout.US"))
+    
+    (add-hook 'mac-ime-functions #'mac-ime-deactivate-ime-on-prefix)
+    
+    ;; Set Converting to TRUE
+    (setq mac-ime-mock-converting t)
+
+    ;; Simulate C-j
+    (mac-ime-mock-simulate-event mac-ime-kVK_ANSI_J mac-ime-NSEventModifierFlagControl)
+    
+    ;; Poll
+    (mac-ime-poll)
+    
+    ;; Check if IME was NOT deactivated (input source remains RomajiTyping)
+    (should (equal (mac-ime-internal-get-input-source) "com.apple.inputmethod.Kotoeri.RomajiTyping"))))
 
 (provide 'mac-ime-mock-test)

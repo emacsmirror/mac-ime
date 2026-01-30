@@ -9,8 +9,6 @@ int plugin_is_GPL_compatible;
 static id eventMonitor = nil;
 static pthread_mutex_t queueMutex;
 static NSMutableArray *eventQueue;
-static BOOL processingEvent = NO;
-static BOOL currentEventConverting = NO;
 
 // --- Helper: Check if converting ---
 BOOL is_converting_helper() {
@@ -93,29 +91,20 @@ static emacs_value Fmac_ime_poll(emacs_env *env, ptrdiff_t nargs, emacs_value ar
     }
 
     // Process queue
-    // Save previous state to handle re-entrancy (e.g. if hook triggers another poll)
-    BOOL previousProcessingEvent = processingEvent;
-    
-    processingEvent = YES;
     for (NSDictionary *evt in currentEvents) {
         long keyCode = [evt[@"keyCode"] longValue];
         unsigned long mods = [evt[@"modifiers"] unsignedLongValue];
-        
-        BOOL previousConverting = currentEventConverting;
-        currentEventConverting = [evt[@"converting"] boolValue];
+        BOOL converting = [evt[@"converting"] boolValue];
 
         // Convert C values to Lisp values
         emacs_value lisp_keycode = env->make_integer(env, keyCode);
         emacs_value lisp_mods = env->make_integer(env, mods);
+        emacs_value lisp_converting = converting ? env->intern(env, "t") : env->intern(env, "nil");
 
-        // Call the Lisp hook: (funcall hook-func keycode modifiers)
-        emacs_value func_args[] = { hook_func, lisp_keycode, lisp_mods };
-        env->funcall(env, env->intern(env, "funcall"), 3, func_args);
-        
-        // Restore state for next iteration or outer loop
-        currentEventConverting = previousConverting;
+        // Call the Lisp hook: (funcall hook-func keycode modifiers converting-p)
+        emacs_value func_args[] = { hook_func, lisp_keycode, lisp_mods, lisp_converting };
+        env->funcall(env, env->intern(env, "funcall"), 4, func_args);
     }
-    processingEvent = previousProcessingEvent;
 
     return env->make_integer(env, [currentEvents count]);
 }
@@ -176,19 +165,6 @@ static emacs_value Fmac_ime_set_input_source(emacs_env *env, ptrdiff_t nargs, em
     CFRelease(sources);
     
     return (status == noErr) ? env->intern(env, "t") : env->intern(env, "nil");
-}
-
-// --- Module Function: Check if converting ---
-static emacs_value Fmac_ime_converting_p(emacs_env *env, ptrdiff_t nargs, emacs_value args[], void *data) {
-    if (processingEvent) {
-        return currentEventConverting ? env->intern(env, "t") : env->intern(env, "nil");
-    }
-
-    if (is_converting_helper()) {
-        return env->intern(env, "t");
-    }
-    
-    return env->intern(env, "nil");
 }
 
 // --- Module Function: Get Input Source List ---
@@ -263,12 +239,6 @@ int emacs_module_init(struct emacs_runtime *ert) {
     emacs_value sym_set_source = env->intern(env, "mac-ime-internal-set-input-source");
     emacs_value args_set_source[] = { sym_set_source, func_set_source };
     env->funcall(env, fset, 2, args_set_source);
-
-    // Register `mac-ime-internal-converting-p`
-    emacs_value func_converting_p = env->make_function(env, 0, 0, Fmac_ime_converting_p, "Check if IME is converting.", NULL);
-    emacs_value sym_converting_p = env->intern(env, "mac-ime-internal-converting-p");
-    emacs_value args_converting_p[] = { sym_converting_p, func_converting_p };
-    env->funcall(env, fset, 2, args_converting_p);
 
     // Provide the feature
     emacs_value provide = env->intern(env, "provide");

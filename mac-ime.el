@@ -22,7 +22,6 @@
 (declare-function mac-ime-internal-get-input-source-list nil ())
 (declare-function mac-ime-internal-get-input-source nil ())
 (declare-function mac-ime-internal-set-input-source nil (source-id))
-(declare-function mac-ime-internal-converting-p nil ())
 (declare-function mac-ime-internal-poll nil (hook-func))
 (declare-function mac-ime-internal-start nil ())
 (declare-function mac-ime-internal-stop nil ())
@@ -43,7 +42,7 @@
 
 (defcustom mac-ime-functions nil
   "List of functions to call when a key event occurs.
-Each function is called with two arguments: (KEYCODE MODIFIERS)."
+Each function is called with three arguments: (KEYCODE MODIFIERS CONVERTING-P)."
   :type 'hook
   :group 'mac-ime)
 
@@ -264,14 +263,15 @@ The original input source is restored in `pre-command-hook`."
         ;; mac-ime-poll has a depth of -100, so we use 100 here to ensure this runs later.
         (add-hook 'pre-command-hook #'mac-ime--restore-input-source 100)))))
 
-(defun mac-ime-deactivate-ime-on-prefix (keycode modifiers)
+(defun mac-ime-deactivate-ime-on-prefix (keycode modifiers converting-p)
   "Deactivate IME when a prefix key defined in `mac-ime-prefix-keys` is pressed.
 This function is intended to be added to `mac-ime-functions`.
 KEYCODE is the virtual key code.
-MODIFIERS is the modifier flags."
+MODIFIERS is the modifier flags.
+CONVERTING-P is non-nil if IME is currently converting."
   (when (and (not mac-ime--saved-input-source)
              (equal current-input-method mac-ime-input-method)
-             (not (mac-ime-converting-p)))
+             (not converting-p))
     (let ((prefix-keys (or mac-ime-prefix-keys (mac-ime-generate-prefix-keys))))
       (cl-loop for (k . m) in prefix-keys
                if (and (= keycode k)
@@ -288,13 +288,14 @@ MODIFIERS is the modifier flags."
 (defvar mac-ime--last-selected-buffer nil
   "The buffer that was current during the last window selection change.")
 
-(defun mac-ime-handler (keycode modifiers)
+(defun mac-ime-handler (keycode modifiers converting-p)
   "Internal handler called by the C module.
 Calls functions in `mac-ime-functions`.
 KEYCODE is the virtual key code.
-MODIFIERS is the modifier flags."
-  (mac-ime--debug 1 "Key event: keycode=%d, modifiers=%d" keycode modifiers)
-  (run-hook-with-args 'mac-ime-functions keycode modifiers)
+MODIFIERS is the modifier flags.
+CONVERTING-P is non-nil if IME is currently converting."
+  (mac-ime--debug 1 "Key event: keycode=%d, modifiers=%d, converting=%s" keycode modifiers converting-p)
+  (run-hook-with-args 'mac-ime-functions keycode modifiers converting-p)
   ;; Skip synchronization if the buffer has changed recently.
   ;; This prevents race conditions where the poll runs before window-selection-change-functions.
   (let ((current (current-buffer)))
@@ -405,13 +406,6 @@ Otherwise, deactivate IME."
   (mac-ime--load-module)
   (when (featurep 'mac-ime-module)
     (mac-ime-internal-set-input-source source-id)))
-
-;;;###autoload
-(defun mac-ime-converting-p ()
-  "Check if IME is converting."
-  (mac-ime--load-module)
-  (when (featurep 'mac-ime-module)
-    (mac-ime-internal-converting-p)))
 
 ;;;###autoload
 (defun mac-ime-get-input-source-list ()

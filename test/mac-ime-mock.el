@@ -39,7 +39,7 @@
 (defun mac-ime-mock-simulate-event (keycode modifiers)
   "Add a simulated event to the queue."
   (setq mac-ime-mock-event-queue
-        (append mac-ime-mock-event-queue (list (cons keycode modifiers)))))
+        (append mac-ime-mock-event-queue (list (list keycode modifiers mac-ime-mock-converting)))))
 
 ;; Mock implementations of internal functions
 
@@ -54,7 +54,7 @@
 (defun mac-ime-internal-poll (callback)
   (let ((count 0))
     (dolist (event mac-ime-mock-event-queue)
-      (funcall callback (car event) (cdr event))
+      (funcall callback (nth 0 event) (nth 1 event) (nth 2 event))
       (setq count (1+ count)))
     (setq mac-ime-mock-event-queue nil)
     (if (> count 0) count nil)))
@@ -71,9 +71,6 @@
 
 (defun mac-ime-internal-get-input-source-list ()
   mac-ime-mock-source-list)
-
-(defun mac-ime-internal-converting-p ()
-  mac-ime-mock-converting)
 
 ;; Override mac-ime--load-module to do nothing but ensure our mocks are ready
 (defun mac-ime-mock-enable ()

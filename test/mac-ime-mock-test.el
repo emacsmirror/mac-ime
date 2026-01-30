@@ -46,7 +46,7 @@
   (mac-ime-internal-start)
   
   (let ((called nil))
-    (add-hook 'mac-ime-functions (lambda (k m) (setq called (list k m))))
+    (add-hook 'mac-ime-functions (lambda (k m c) (setq called (list k m c))))
     
     ;; Simulate 'x' key (keycode 7) with no modifiers
     (mac-ime-mock-simulate-event 7 0)
@@ -54,7 +54,7 @@
     ;; Poll should trigger the hook
     (mac-ime-poll)
     
-    (should (equal called '(7 0)))))
+    (should (equal called '(7 0 nil)))))
 
 (ert-deftest mac-ime-auto-deactivate-on-prefix-test ()
   "Test automatic IME deactivation on prefix key."

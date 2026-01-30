@@ -2,7 +2,7 @@
 
 ;; Copyright (C) 2025 Masami
 ;; Author: Masami Iwata
-;; Version: 0.1.2
+;; Version: 0.1.3
 ;; Keywords: mac, input, ime
 ;; Package-Requires: ((emacs "27.1"))
 ;; URL: https://github.com/ma0001/mac-ime

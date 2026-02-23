@@ -2,7 +2,13 @@
 
 (require 'ert)
 (require 'mac-ime)
-(require 'mac-ime-mock (expand-file-name "mac-ime-mock.el" (file-name-directory load-file-name)))
+(eval-and-compile
+  (let ((mock-file (expand-file-name "mac-ime-mock.el"
+                                     (file-name-directory (or load-file-name byte-compile-current-file buffer-file-name)))))
+    (require 'mac-ime-mock mock-file)))
+
+;; Declare test function to silence complier warning
+(defun mac-ime-test-inherit-func (_arg1 _inherit) nil)
 
 ;; Override module loading to use mock
 (defun mac-ime--load-module ()
@@ -34,8 +40,10 @@
   (let ((inner-source nil)
         (mac-ime-auto-deactivate-functions mac-ime-auto-deactivate-functions))
     
-    (defun mac-ime-test-inherit-func (arg1 inherit)
-      (setq inner-source (mac-ime-internal-get-input-source)))
+    ;; Redefine function cleanly for tests
+    (defalias 'mac-ime-test-inherit-func 
+      (lambda (_arg1 _inherit)
+        (setq inner-source (mac-ime-internal-get-input-source))))
     
     ;; Register function with inherit index 1
     (add-to-list 'mac-ime-auto-deactivate-functions '(mac-ime-test-inherit-func . 1))
@@ -52,4 +60,5 @@
     (should (equal (mac-ime-internal-get-input-source) "com.apple.inputmethod.Kotoeri.RomajiTyping"))
     
     ;; Cleanup
-    (advice-remove 'mac-ime-test-inherit-func (intern "mac-ime--auto-deactivate-mac-ime-test-inherit-func"))))
+    (advice-remove 'mac-ime-test-inherit-func (intern "mac-ime--auto-deactivate-mac-ime-test-inherit-func"))
+    (fmakunbound 'mac-ime-test-inherit-func)))

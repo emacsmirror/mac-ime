@@ -44,6 +44,14 @@ git clone https://github.com/ma0001/mac-ime.git
 (mac-ime-enable)
 ```
 
+3. アップデート
+
+リポジトリをpullしてください
+
+```bash
+cd /path/to/mac-ime
+git pull
+```
 
 ### use-package :vc を使用する場合 (Emacs 29以降)
 
@@ -59,6 +67,9 @@ Emacs 29以降では `use-package` の `:vc` キーワードを使用してイ�
   ;; モジュールの有効化
   (mac-ime-enable))
 ```
+
+`use-package` の `:vc` キーワードを使用している場合は `package-upgrade-all` でアップデートできます。
+（list-packagesの'U'では認識できない）
 
 ## 起動方法
 

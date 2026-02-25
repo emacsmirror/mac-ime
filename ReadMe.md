@@ -46,7 +46,7 @@ git clone https://github.com/ma0001/mac-ime.git
 
 3. アップデート
 
-リポジトリをpullしてください
+アップデートする場合は、リポジトリをpullしてください
 
 ```bash
 cd /path/to/mac-ime
@@ -68,8 +68,8 @@ Emacs 29以降では `use-package` の `:vc` キーワードを使用してイ�
   (mac-ime-enable))
 ```
 
-`use-package` の `:vc` キーワードを使用している場合は `package-upgrade-all` でアップデートできます。
-（list-packagesの'U'では認識できない）
+アップデート方法は　`M-x package-vc-upgrade`　または　`M-x package-upgrade-all`　でできます。
+（list-packagesでは'U'表示されない）
 
 ## 起動方法
 

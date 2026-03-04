@@ -4,8 +4,12 @@
 (require 'mac-ime)
 
 ;; Add test directory to load-path to find mac-ime-mock
-(add-to-list 'load-path (file-name-directory (or load-file-name buffer-file-name)))
-(require 'mac-ime-mock)
+(eval-and-compile
+  (add-to-list 'load-path (file-name-directory (or load-file-name byte-compile-current-file buffer-file-name)))
+  (require 'mac-ime-mock))
+
+;; Declare test function to silence complier warning
+(defun mac-ime-test-func () nil)
 
 ;; Enable mock
 (mac-ime-mock-enable)
@@ -109,8 +113,9 @@
   (setq mac-ime-last-off-input-source "com.apple.keylayout.US")
   
   (let ((inner-source nil))
-    (defun mac-ime-test-func ()
-      (setq inner-source (mac-ime-internal-get-input-source)))
+    ;; Redefine function cleanly for tests
+    (defalias 'mac-ime-test-func
+      (lambda () (setq inner-source (mac-ime-internal-get-input-source))))
     
     ;; Register function
     (mac-ime-auto-deactivate 'mac-ime-test-func)
@@ -125,7 +130,8 @@
     (should (equal (mac-ime-internal-get-input-source) "com.apple.inputmethod.Kotoeri.RomajiTyping"))
     
     ;; Cleanup advice
-    (advice-remove 'mac-ime-test-func #'mac-ime--auto-deactivate-advice)))
+    (advice-remove 'mac-ime-test-func (intern "mac-ime--auto-deactivate-mac-ime-test-func"))
+    (fmakunbound 'mac-ime-test-func)))
 
 (ert-deftest mac-ime-sync-state-test ()
   "Test synchronization of Emacs input method state with OS input source."

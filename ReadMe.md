@@ -16,11 +16,13 @@ Emacsのダイナミックモジュール機能を利用してOSのIMEを制御�
 - Emacs 27.1 以上 (ダイナミックモジュールサポートが有効であること)
 - Clang (ビルド用)
 
-## インストールとビルド
+## インストール
 
 ダイナミックモジュールをファットバイナリーで作成しているため、AppleシリコンでもX86搭載のMacでもリポジトリ内の (`.so` ファイル)が使えるのでビルドは不要です。
 
-リポジトリのクローンのみで使用可能です。
+リポジトリのクローンまたはEmacs 29以降では `use-package` の `:vc` キーワードを使用してインストールできます。
+
+### リポジトリをクローンする場合
 
 1. リポジトリをクローンします。
 
@@ -28,9 +30,7 @@ Emacsのダイナミックモジュール機能を利用してOSのIMEを制御�
 git clone https://github.com/ma0001/mac-ime.git
 ```
 
-## 設定例
-
-`init.el` などに以下の設定を追加してください。
+2. `init.el` などに以下の設定を追加してください。
 
 基本設定は以下だけです
 
@@ -38,13 +38,40 @@ git clone https://github.com/ma0001/mac-ime.git
 ;; ロードパスの追加 (リポジトリのパスに合わせて変更してください)
 (add-to-list 'load-path "/path/to/mac-ime")
 (require 'mac-ime)
-
 ;; input methodgを"mac-ime"に設定
 (setq default-input-method "mac-ime")
-
 ;; モジュールの有効化 (イベント監視の開始)
 (mac-ime-enable)
 ```
+
+3. アップデート
+
+アップデートする場合は、リポジトリをpullしてください
+
+```bash
+cd /path/to/mac-ime
+git pull
+```
+
+### use-package :vc を使用する場合 (Emacs 29以降)
+
+Emacs 29以降では `use-package` の `:vc` キーワードを使用してインストールできます。
+`init.el` などに以下の設定を追加してください。
+
+```elisp
+(use-package mac-ime
+  :vc (:url "https://github.com/ma0001/mac-ime")
+  :config
+  ;; input methodを"mac-ime"に設定
+  (setq default-input-method "mac-ime")
+  ;; モジュールの有効化
+  (mac-ime-enable))
+```
+
+アップデート方法は　`M-x package-vc-upgrade`　または　`M-x package-upgrade-all`　でできます。
+（list-packagesでは'U'表示されない）
+
+## 起動方法
 
 本機能が有効になるのはinput methodが"mac-ime"の場合です。
 C-\ (toggle-input-method) や cmd-space などで日本語入力状態にすることによりIMEの自動オフと復帰動作を行うようになります。

@@ -1,5 +1,7 @@
 ;;; mac-ime-inherit-test.el --- Tests for IME inheritance logic -*- lexical-binding: t; -*-
 
+(setq load-prefer-newer t)
+
 (require 'ert)
 (require 'mac-ime)
 (eval-and-compile

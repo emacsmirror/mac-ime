@@ -71,6 +71,13 @@ Emacs 29以降では `use-package` の `:vc` キーワードを使用してイ�
 アップデート方法は　`M-x package-vc-upgrade`　または　`M-x package-upgrade-all`　でできます。
 （list-packagesでは'U'表示されない）
 
+> [!IMPORTANT]
+> `mac-ime` はダイナミックモジュール (`.so`) を使用しています。  `package-upgrade-all`
+> でファイル更新はできますが、`module-load` 済みのモジュール本体は同じ Emacs
+> プロセス内で完全に差し替えできません。  アップデート後は Emacs を再起動してください。
+> `mac-ime-unload-function` はタイマー・フック・advice の後始末を行いますが、
+> モジュール本体のアンロードではありません。
+
 ## 起動方法
 
 本機能が有効になるのはinput methodが"mac-ime"の場合です。

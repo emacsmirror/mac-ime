@@ -1,5 +1,7 @@
 ;;; mac-ime-test.el --- Tests for mac-ime -*- lexical-binding: t; -*-
 
+(setq load-prefer-newer t)
+
 (require 'ert)
 (require 'mac-ime)
 
@@ -103,6 +105,30 @@
   (should-not mac-ime--sync-paused)
   (should-not mac-ime--expected-input-source)
   (mac-ime-disable))
+
+(ert-deftest mac-ime-unload-function-cleans-up-test ()
+  "Test that `mac-ime-unload-function` cleans up runtime state."
+  (mac-ime-test-reset)
+  (mac-ime-enable)
+
+  (let ((read-string-advice (intern "mac-ime--auto-deactivate-read-string")))
+    (should mac-ime-timer)
+    (should (member #'mac-ime-poll pre-command-hook))
+    (should (member #'mac-ime-update-state
+                    window-selection-change-functions))
+    (should (advice-member-p #'mac-ime--temporary-deactivate-advice
+                             'universal-argument--mode))
+    (should (advice-member-p read-string-advice 'read-string))
+
+    (should-not (mac-ime-unload-function))
+
+    (should-not mac-ime-timer)
+    (should-not (member #'mac-ime-poll pre-command-hook))
+    (should-not (member #'mac-ime-update-state
+                        window-selection-change-functions))
+    (should-not (advice-member-p #'mac-ime--temporary-deactivate-advice
+                                 'universal-argument--mode))
+    (should-not (advice-member-p read-string-advice 'read-string))))
 
 (ert-deftest mac-ime-auto-deactivate-functions-test ()
   "Test automatic IME deactivation for specific functions."

@@ -541,6 +541,13 @@ Uses `mac-ime--get-ime-off-input-source` to determine the input source."
       (mac-ime-set-input-source source)
       (setq mac-ime--sync-paused t
             mac-ime--expected-input-source source))))
+
+(defun mac-ime-unload-function ()
+  "Cleanup mac-ime state before unloading this feature.
+This function disables hooks, timers, and advices via
+`mac-ime-disable`."
+  (mac-ime-disable)
+  nil)
       
 (provide 'mac-ime)
 ;;; mac-ime.el ends here

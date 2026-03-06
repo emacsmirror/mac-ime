@@ -1,5 +1,7 @@
 ;;; mac-ime-integration-test.el --- Integration tests for mac-ime -*- lexical-binding: t; -*-
 
+(setq load-prefer-newer t)
+
 (require 'ert)
 (require 'mac-ime)
 

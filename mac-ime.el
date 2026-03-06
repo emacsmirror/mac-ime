@@ -282,7 +282,15 @@ CONVERTING-P is non-nil if IME is currently converting."
   "Load the dynamic module if not already loaded."
   (unless (featurep 'mac-ime-module)
     (if (file-exists-p mac-ime-module-path)
-        (module-load mac-ime-module-path)
+        (condition-case err
+            (module-load mac-ime-module-path)
+          (error
+           (error (concat "mac-ime: Failed to load module `%s': %s\n"
+                          "Hint: On macOS, this can be caused by quarantine.\n"
+                          "Try: xattr -d com.apple.quarantine %s")
+                  mac-ime-module-path
+                  (error-message-string err)
+                  mac-ime-module-path)))
       (error "mac-ime: Module not found at %s" mac-ime-module-path))))
 
 (defvar mac-ime--last-selected-buffer nil
@@ -541,6 +549,13 @@ Uses `mac-ime--get-ime-off-input-source` to determine the input source."
       (mac-ime-set-input-source source)
       (setq mac-ime--sync-paused t
             mac-ime--expected-input-source source))))
+
+(defun mac-ime-unload-function ()
+  "Cleanup mac-ime state before unloading this feature.
+This function disables hooks, timers, and advices via
+`mac-ime-disable`."
+  (mac-ime-disable)
+  nil)
       
 (provide 'mac-ime)
 ;;; mac-ime.el ends here

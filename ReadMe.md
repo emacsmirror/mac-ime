@@ -78,6 +78,32 @@ Emacs 29以降では `use-package` の `:vc` キーワードを使用してイ�
 > `mac-ime-unload-function` はタイマー・フック・advice の後始末を行いますが、
 > モジュール本体のアンロードではありません。
 
+## トラブルシューティング
+
+### `library load disallowed by system policy` が出る
+
+`mac-ime-module.so` に `com.apple.quarantine` 属性が付いている場合、
+`module-load` が失敗することがあります。  まず属性を確認してください。
+
+`make test` は事前にこの属性を検査し、見つかった場合はテスト開始前に停止します。
+
+```bash
+xattr -l mac-ime-module.so
+```
+
+`com.apple.quarantine` が表示された場合は、次を実行してください。
+
+```bash
+xattr -d com.apple.quarantine mac-ime-module.so
+```
+
+それでも解消しない場合は再ビルドを試してください。
+
+```bash
+make clean
+make
+```
+
 ## 起動方法
 
 本機能が有効になるのはinput methodが"mac-ime"の場合です。

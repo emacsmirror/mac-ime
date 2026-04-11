@@ -1,4 +1,4 @@
-;;; mac-ime-inherit-test.el --- Tests for IME inheritance logic -*- lexical-binding: t; -*-
+;;; mac-ime-inherit-test.el --- Tests for IME inheritance logic -*- lexical-binding: t; no-byte-compile: t; -*-
 
 (setq load-prefer-newer t)
 
@@ -12,10 +12,11 @@
 ;; Declare test function to silence complier warning
 (defun mac-ime-test-inherit-func (_arg1 _inherit) nil)
 
-;; Override module loading to use mock
-(defun mac-ime--load-module ()
-  (require 'mac-ime-mock)
-  (provide 'mac-ime-module))
+;; Override module loading to use mock (only when not compiling)
+(unless (bound-and-true-p byte-compile-current-file)
+  (defun mac-ime--load-module ()
+    (require 'mac-ime-mock)
+    (provide 'mac-ime-module)))
 
 (defun mac-ime-test-reset ()
   (mac-ime-mock-reset)

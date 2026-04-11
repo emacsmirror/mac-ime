@@ -1,4 +1,4 @@
-;;; mac-ime-test.el --- Tests for mac-ime -*- lexical-binding: t; -*-
+;;; mac-ime-test.el --- Tests for mac-ime -*- lexical-binding: t; no-byte-compile: t; -*-
 
 (setq load-prefer-newer t)
 
@@ -13,8 +13,9 @@
 ;; Declare test function to silence complier warning
 (defun mac-ime-test-func () nil)
 
-;; Enable mock
-(mac-ime-mock-enable)
+;; Enable mock only when not compiling
+(unless (bound-and-true-p byte-compile-current-file)
+  (mac-ime-mock-enable))
 
 (defun mac-ime-test-reset ()
   "Reset both mock and mac-ime internal state."

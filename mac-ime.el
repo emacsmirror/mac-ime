@@ -2,7 +2,7 @@
 
 ;; Copyright (C) 2025 Masami
 ;; Author: Masami Iwata
-;; Version: 0.1.3
+;; Version: 0.1.4
 ;; Keywords: mac, input, ime
 ;; Package-Requires: ((emacs "27.1"))
 ;; URL: https://github.com/ma0001/mac-ime
@@ -284,13 +284,12 @@ CONVERTING-P is non-nil if IME is currently converting."
     (if (file-exists-p mac-ime-module-path)
         (condition-case err
             (module-load mac-ime-module-path)
-          (error
-           (error (concat "mac-ime: Failed to load module `%s': %s\n"
-                          "Hint: On macOS, this can be caused by quarantine.\n"
-                          "Try: xattr -d com.apple.quarantine %s")
-                  mac-ime-module-path
-                  (error-message-string err)
-                  mac-ime-module-path)))
+          (error (concat "mac-ime: Failed to load module `%s': %s\n"
+                         "Hint: On macOS, this can be caused by quarantine.\n"
+                         "Try: xattr -d com.apple.quarantine %s")
+                 mac-ime-module-path
+                 (error-message-string err)
+                 mac-ime-module-path))
       (error "mac-ime: Module not found at %s" mac-ime-module-path))))
 
 (defvar mac-ime--last-selected-buffer nil

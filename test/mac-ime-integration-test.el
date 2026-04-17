@@ -1,4 +1,4 @@
-;;; mac-ime-integration-test.el --- Integration tests for mac-ime -*- lexical-binding: t; -*-
+;;; mac-ime-integration-test.el --- Integration tests for mac-ime -*- lexical-binding: t; no-byte-compile: t; -*-
 
 (setq load-prefer-newer t)
 

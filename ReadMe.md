@@ -1,8 +1,8 @@
 # mac-ime
 
 IMEパッチの入っていないEmacsでIMEを快適に使うための拡張機能です。
-macOSのキー入力イベントをフックして、プリフィックスキーが押されたり、ミニバッファの入力時などにIMEの切り替えや制御を行います。
-Emacsのダイナミックモジュール機能を利用してOSのIMEを制御しているためIMEパッチなしのEmacsでもストレスなく使用することができます。
+macOSのキー入力イベントをフックして、プリフィックスキーが押されたり、ミニバッファの入力時などに自動的にIMEをOFFにしコマンド実行後に復帰します。
+Emacsのダイナミックモジュール機能を利用してOSのIMEを制御しているためIMEパッチなしのEmacsでもストレスなく日本語入力ができます。
 
 ## 特徴
 
@@ -167,7 +167,22 @@ metaや、control以外のキーを使うようなキーでも制御したい場
 
 本モジュールではmacOSの入力ソースがRomanなのか日本語などの非Romanなのかを判定する必要があるためinput source IDを正規表現を使って判定を行っています。もし特殊なIMEを使っていてこの判断が正しく動作しない場合はmac-ime-no-ime-input-source-regexpで正しくRomanを判断できるように設定してください。現在使用可能なinput source IDは(mac-ime-get-input-source-list)で取得できます。
 
-## 暫定処理
+## 検討事項いろいろ
+ソフト作成中に問題となった動作と、その対策方法についてまとめる
+
+### C-x C-x 後すぐにIME状態が復帰しない
+
+C-x C-xのようにキーバインドの最後がプリフィックスキーの場合、コマンド実施後に再度IMEオフ状態になってしまう。
+
+原因：
+
+キーイベントをポーリングだけで処理していたため、プリフィックスキーの処理が遅れてコマンド実行後に動作していた。
+（C-x C-x(exchange-point-and-mark)の実行後に最後のプリフィックスキーをコマンド実行後のプリフィックスキー入力と認識してしまいIMEをオフにしていた。）
+
+
+対策：
+
+キーイベントの処理をタイマーによるポーリングだけでなく、`pre-command-hook` でも行うように変更した。その際、ポーリング処理の優先度（depth）を高く設定し、IMEの復帰処理よりも先に実行されるように制御することで、コマンド実行直前のイベントを正しく処理させている。
 
 ### minibufferのIMEがONになることがある
 
@@ -180,7 +195,7 @@ minibufferで日本語入力すると、minibufferのcurrent-input-methodはmac-
 その後にminibufferへの切り替えが発生する。
 その時window-selection-change-functions のフックでmac-ime-update-stateの処理でIMEがバッファに合わせて日本語入力になってしまう
 
-暫定対策：
+対策：
 
 バッファが切り替わってからIMEを英語にしたいが難しい。
 mac-ime--ignore-input-source-changeが有効な間は、バッファ変更時のIME更新処理をしないようにする
@@ -191,18 +206,31 @@ mac-ime--ignore-input-source-changeが有効な間は、バッファ変更時の
 
 ### 基本操作
 
-- `(mac-ime-enable)`: イベントモニターを開始し、ポーリングタイマーを起動します。
-- `(mac-ime-disable)`: イベントモニターとタイマーを停止します。
+- `(mac-ime-enable)`: イベントモニターを開始し、キーイベントの監視と各種フックを有効にします。
+- `(mac-ime-disable)`: イベントモニター、タイマー、およびフックを停止・解除します。
 
 ### IME操作
 
 - `(mac-ime-get-input-source)`: 現在の入力ソースIDを取得します (例: `"com.apple.keylayout.US"`).
 - `(mac-ime-set-input-source SOURCE-ID)`: 指定したIDの入力ソースに変更します。
 - `(mac-ime-get-input-source-list)`: 利用可能な入力ソースIDのリストを取得します。
+- `(mac-ime-activate-ime)`: システムのIMEをオンの状態（日本語入力など）に切り替えます。
+- `(mac-ime-deactivate-ime)`: システムのIMEをオフの状態（Roman/英語）に切り替えます。
+
+### 自動切り替え設定の追加
+
+- `(mac-ime-auto-deactivate FUNC)`: 指定した関数 `FUNC` の実行中に自動的にIMEをオフにし、終了後に復元する設定（アドバイス）を追加します。
+- `(mac-ime-temporary-deactivate FUNC)`: 指定した関数 `FUNC` の実行前に一時的にIMEをオフにする設定（アドバイス）を追加します。状態の復元は、次に新たなコマンドが実行される直前に行われます。
 
 ## カスタマイズ
 
 - `mac-ime-prefix-keys`: IME無効化のトリガーとなるプレフィックスキーの設定。
+- `mac-ime-modifier-action-table`: 修飾キー（Control, Metaなど）ごとに、どのキーをプレフィックスキーとして登録するかの対応表。
 - `mac-ime-auto-deactivate-functions`: 実行時に自動的にIMEを無効化する関数のリスト。デフォルトではミニバッファ入力時などにIMEをオフにします。
-- `mac-ime-temporary-deactivate-functions`: 実行前に一時的にIMEを無効化し、コマンド終了後に元の状態に戻す関数のリスト。デフォルトでは `universal-argument` などが含まれます。
+- `mac-ime-temporary-deactivate-functions`: 実行前に一時的にIMEを無効化し、次に新たなコマンドが開始される直前に元の状態に戻す関数のリスト。デフォルトでは `universal-argument` などが含まれます。
+- `mac-ime-no-ime-input-source-regexp`: どの入力ソースが「IMEオフ（Roman/英語）」であるかを判定するための正規表現。
+- `mac-ime-ime-on-input-source` / `mac-ime-ime-off-input-source`: IMEをオン/オフする際に使用する入力ソースIDを明示的に指定する場合に使用します（通常は自動判定されます）。
+- `mac-ime-title-rules`: 入力ソースIDに応じてモードラインに表示するインジケータ（`[あ]` など）を決定するルール。
+- `mac-ime-debug-level`: デバッグメッセージの出力レベル（0:なし、1:入力キー、2:詳細）。
+- `mac-ime-functions`: キーイベントが発生した際に呼び出されるフック関数リスト。
 

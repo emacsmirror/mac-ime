@@ -9,9 +9,6 @@ on:
 jobs:
   test:
     runs-on: macos-latest
-    strategy:
-      matrix:
-        emacs_version: [ '27.1', 'stable' ]
 
     steps:
     - uses: actions/checkout@v4
@@ -19,7 +16,7 @@ jobs:
     - name: Setup Emacs
       uses: purcell/setup-emacs@master
       with:
-        version: ${{ matrix.emacs_version }}
+        version: '29.3'
 
     - name: Run tests
       run: make test

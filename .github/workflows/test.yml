@@ -1,0 +1,25 @@
+name: Test
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        emacs_version: [ '27.1', 'stable' ]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Emacs
+      uses: purcell/setup-emacs@master
+      with:
+        version: ${{ matrix.emacs_version }}
+
+    - name: Run tests
+      run: make test

@@ -65,3 +65,37 @@
     ;; Cleanup
     (advice-remove 'mac-ime-test-inherit-func (intern "mac-ime--auto-deactivate-mac-ime-test-inherit-func"))
     (fmakunbound 'mac-ime-test-inherit-func)))
+
+(ert-deftest mac-ime-inherit-input-method-nil-im-test ()
+  "Test that IME state is NOT deactivated when current-input-method is nil."
+  (mac-ime-test-reset)
+  
+  ;; Setup: IME is ON but current-input-method is nil
+  (setq mac-ime-debug-level 2)
+  (mac-ime-internal-set-input-source "com.apple.inputmethod.Kotoeri.RomajiTyping")
+  (setq current-input-method nil)
+  (setq mac-ime-last-off-input-source "com.apple.keylayout.US")
+  
+  (let ((inner-source nil)
+        (mac-ime-auto-deactivate-functions mac-ime-auto-deactivate-functions))
+    
+    ;; Redefine function cleanly for tests
+    (defalias 'mac-ime-test-inherit-func 
+      (lambda (_arg1 _inherit)
+        (setq inner-source (mac-ime-internal-get-input-source))))
+    
+    ;; Register function with inherit index 1
+    (add-to-list 'mac-ime-auto-deactivate-functions '(mac-ime-test-inherit-func . 1))
+    (mac-ime-auto-deactivate '(mac-ime-test-inherit-func . 1))
+    
+    ;; Case 1: inherit is nil -> Should NOT deactivate because current-input-method is nil
+    (mac-ime-test-inherit-func "dummy" nil)
+    (should (equal inner-source "com.apple.inputmethod.Kotoeri.RomajiTyping"))
+    
+    ;; Case 2: inherit is t -> Should NOT deactivate
+    (mac-ime-test-inherit-func "dummy" t)
+    (should (equal inner-source "com.apple.inputmethod.Kotoeri.RomajiTyping"))
+    
+    ;; Cleanup
+    (advice-remove 'mac-ime-test-inherit-func (intern "mac-ime--auto-deactivate-mac-ime-test-inherit-func"))
+    (fmakunbound 'mac-ime-test-inherit-func)))

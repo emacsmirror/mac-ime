@@ -2,7 +2,7 @@
 
 ;; Copyright (C) 2025 Masami
 ;; Author: Masami Iwata
-;; Version: 0.1.4
+;; Version: 0.1.5
 ;; Keywords: mac, input, ime
 ;; Package-Requires: ((emacs "27.1"))
 ;; URL: https://github.com/ma0001/mac-ime
@@ -151,8 +151,9 @@ If nil, `mac-ime-last-on-input-source` or the first input source NOT matching
 Each element can be a function symbol or a cons cell (FUNCTION . ARG-INDEX).
 If it is a cons cell, ARG-INDEX specifies the position of the
 INHERIT-INPUT-METHOD argument.
-If the argument is non-nil and the current input method is
-`mac-ime-input-method`, IME will remain active.  Otherwise, IME is deactivated."
+If the current input method is `mac-ime-input-method` and the argument is nil
+(or not specified), IME is deactivated.  Otherwise, the IME state is not
+changed."
   :type '(repeat (choice function (cons function integer)))
   :group 'mac-ime)
 
@@ -430,9 +431,8 @@ CONFIG is the configuration (symbol or cons)."
   (let* ((inherit-index (if (consp config) (cdr config) nil))
          (should-inherit (and inherit-index (nth inherit-index args)))
          (should-deactivate
-          (if should-inherit
-              (not (equal current-input-method mac-ime-input-method))
-            t)))
+          (and (equal current-input-method mac-ime-input-method)
+               (not should-inherit))))
     (if should-deactivate
         (let ((saved-source (mac-ime-get-input-source))
               (off-source (mac-ime--get-ime-off-input-source)))
@@ -453,9 +453,9 @@ CONFIG is the configuration (symbol or cons)."
   "Add advice to FUNC to deactivate IME during its execution.
 FUNC can be a function symbol or a cons cell (FUNCTION . ARG-INDEX).
 If it is a cons cell, ARG-INDEX specifies the position of the
-INHERIT-INPUT-METHOD argument.  If the argument is non-nil and the current
-input method is `mac-ime-input-method`, IME will remain active.  Otherwise,
-IME is deactivated.
+INHERIT-INPUT-METHOD argument.  If the current input method is
+`mac-ime-input-method` and the argument is nil (or not specified), IME is
+deactivated.  Otherwise, the IME state is not changed.
 The IME state is restored after FUNC completes."
   (let* ((f-sym (if (consp func) (car func) func))
          (advice-name (intern (format "mac-ime--auto-deactivate-%s" f-sym))))

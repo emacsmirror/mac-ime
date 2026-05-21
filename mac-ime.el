@@ -320,12 +320,11 @@ off-source, others to on-source."
   (unless mac-ime--ignore-input-source-change
     (let ((current (mac-ime-get-input-source)))
       (when (and current
-                 mac-ime--current-input-source
                  (not (string= current mac-ime--current-input-source)))
         (let ((case-fold-search t))
-          (if (string-match-p mac-ime-no-ime-input-source-regexp mac-ime--current-input-source)
-              (setq mac-ime-last-off-input-source mac-ime--current-input-source)
-            (setq mac-ime-last-on-input-source mac-ime--current-input-source))))
+          (if (string-match-p mac-ime-no-ime-input-source-regexp current)
+              (setq mac-ime-last-off-input-source current)
+            (setq mac-ime-last-on-input-source current))))
       (setq mac-ime--current-input-source current))))
 
 (defun mac-ime-poll ()

@@ -249,4 +249,31 @@
       (should (equal (mac-ime--get-ime-on-input-source)
                      "com.apple.inputmethod.OtherIME")))))
 
+(ert-deftest mac-ime-dummy-event-test ()
+  "Test that dummy events (keycode < 0) skip key hooks but trigger sync."
+  (mac-ime-test-reset)
+  (mac-ime-internal-start)
+  (setq mac-ime--last-selected-buffer (current-buffer))
+  
+  (let ((hook-called nil))
+    (add-hook 'mac-ime-functions (lambda (k m c) (setq hook-called t)))
+    
+    ;; Set up initial input source (US)
+    (mac-ime-internal-set-input-source "com.apple.keylayout.US")
+    (setq mac-ime--current-input-source "com.apple.keylayout.US")
+    
+    ;; Simulate a dummy event with keycode = -1 (input source change)
+    ;; and simulate changing the mock input source to RomajiTyping
+    (setq mac-ime-mock-current-source "com.apple.inputmethod.Kotoeri.RomajiTyping")
+    (mac-ime-mock-simulate-event -1 0)
+    
+    ;; Poll
+    (mac-ime-poll)
+    
+    ;; Verify that the key hook was NOT called
+    (should-not hook-called)
+    
+    ;; Verify that synchronization was triggered and the cached current input source is updated
+    (should (equal mac-ime--current-input-source "com.apple.inputmethod.Kotoeri.RomajiTyping"))))
+
 (provide 'mac-ime-mock-test)

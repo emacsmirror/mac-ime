@@ -178,6 +178,11 @@ is called by `universal-argument`, `universal-argument-more`, and
   :type '(repeat function)
   :group 'mac-ime)
 
+(defcustom mac-ime-poll-interval 0.1
+  "Interval in seconds for polling input source events and status."
+  :type 'number
+  :group 'mac-ime)
+
 (defcustom mac-ime-debug-level 0
   "Debug level for mac-ime.
 0: No debug messages.
@@ -321,7 +326,8 @@ KEYCODE is the virtual key code.
 MODIFIERS is the modifier flags.
 CONVERTING-P is non-nil if IME is currently converting."
   (mac-ime--debug 1 "Key event: keycode=%d, modifiers=%d, converting=%s" keycode modifiers converting-p)
-  (run-hook-with-args 'mac-ime-functions keycode modifiers converting-p)
+  (when (>= keycode 0)
+    (run-hook-with-args 'mac-ime-functions keycode modifiers converting-p))
   ;; Skip synchronization if the buffer has changed recently.
   ;; This prevents race conditions where the poll runs before window-selection-change-functions.
   (let ((current (current-buffer)))
@@ -381,7 +387,7 @@ Otherwise, deactivate IME."
   (when (featurep 'mac-ime-module)
     (mac-ime-internal-start)
     (unless mac-ime-timer
-      (setq mac-ime-timer (run-with-idle-timer 0 t #'mac-ime-poll))
+      (setq mac-ime-timer (run-with-timer 0 mac-ime-poll-interval #'mac-ime-poll))
       ;; Use a negative depth (-100) to ensure mac-ime-poll runs BEFORE other hooks,
       ;; specifically before mac-ime--restore-input-source (which has depth 100).
       ;; This prevents the IME from being restored before the poll can detect the event.

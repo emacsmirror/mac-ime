@@ -7,6 +7,7 @@ int plugin_is_GPL_compatible;
 
 // Global variables to manage state
 static id eventMonitor = nil;
+static id notificationObserver = nil;
 static pthread_mutex_t queueMutex;
 static NSMutableArray *eventQueue;
 
@@ -42,6 +43,15 @@ static emacs_value Fmac_ime_start(emacs_env *env, ptrdiff_t nargs, emacs_value a
     pthread_mutex_init(&queueMutex, NULL);
     eventQueue = [[NSMutableArray alloc] init];
 
+    // Add Notification Observer for input source change
+    notificationObserver = [[NSNotificationCenter defaultCenter] addObserverForName:NSTextInputContextKeyboardSelectionDidChangeNotification
+                                                      object:nil
+                                                       queue:[NSOperationQueue mainQueue]
+                                                  usingBlock:^(NSNotification * _Nonnull note) {
+        // Enqueue a dummy event (keycode = -1) when the input source changes
+        enqueue_event_data(-1, 0, NO);
+    }];
+
     // Add Local Monitor
     // NSEventMaskKeyDown | NSEventMaskFlagsChanged
     NSEventMask mask = NSEventMaskKeyDown | NSEventMaskFlagsChanged; 
@@ -70,6 +80,10 @@ static emacs_value Fmac_ime_stop(emacs_env *env, ptrdiff_t nargs, emacs_value ar
         [NSEvent removeMonitor:eventMonitor];
         eventMonitor = nil;
         eventQueue = nil; // ARC handles release in ObjC ARC mode, or release manually
+    }
+    if (notificationObserver) {
+        [[NSNotificationCenter defaultCenter] removeObserver:notificationObserver];
+        notificationObserver = nil;
     }
     return env->intern(env, "t");
 }

@@ -136,6 +136,16 @@ If nil, `mac-ime-last-on-input-source` or the first input source NOT matching
                  (string :tag "Input Source ID"))
   :group 'mac-ime)
 
+(defcustom mac-ime-ime-on-input-source-regexps '("romajityping" "japanese")
+  "List of regexps matching input source IDs to prefer when turning on IME.
+Regexps are checked in order.  The first one matching any available
+input source will be chosen.
+
+Note that this variable is evaluated only when `mac-ime-last-on-input-source'
+is nil and `toggle-input-method' (or `activate-input-method') is called."
+  :type '(repeat regexp)
+  :group 'mac-ime)
+
 (defcustom mac-ime-auto-deactivate-functions '((read-string . 4)
                                                (read-char . 1)
                                                (read-event . 1)
@@ -229,15 +239,23 @@ If that is also nil, find the first input source matching
   "Return the input source ID to use to turn on IME.
 If `mac-ime-ime-on-input-source` is non-nil, return it.
 Otherwise, use `mac-ime-last-on-input-source`.
-If that is also nil, find the first input source NOT matching
+If that is also nil, find the first input source matching one of the regexps
+in `mac-ime-ime-on-input-source-regexps` in order.
+If no match is found, find the first input source NOT matching
 `mac-ime-no-ime-input-source-regexp` and cache it."
   (or mac-ime-ime-on-input-source
       mac-ime-last-on-input-source
       (setq mac-ime-last-on-input-source
-            (cl-loop for source in (mac-ime-get-input-source-list)
-                     if (not (let ((case-fold-search t))
-                               (string-match-p mac-ime-no-ime-input-source-regexp source)))
-                     return source))))
+            (let ((sources (mac-ime-get-input-source-list)))
+              (or (cl-loop for regexp in mac-ime-ime-on-input-source-regexps
+                           thereis (cl-loop for source in sources
+                                            if (let ((case-fold-search t))
+                                                 (string-match-p regexp source))
+                                            return source))
+                  (cl-loop for source in sources
+                           if (not (let ((case-fold-search t))
+                                     (string-match-p mac-ime-no-ime-input-source-regexp source)))
+                           return source))))))
 
 (defun mac-ime--restore-input-source ()
   "Restore the saved input source."

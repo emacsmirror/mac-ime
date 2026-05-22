@@ -211,4 +211,42 @@
     ;; Check if IME was NOT deactivated (input source remains RomajiTyping)
     (should (equal (mac-ime-internal-get-input-source) "com.apple.inputmethod.Kotoeri.RomajiTyping"))))
 
+(ert-deftest mac-ime-get-ime-on-input-source-priority-test ()
+  "Test prioritized IME-on input source selection."
+  (mac-ime-test-reset)
+  (let ((mac-ime-mock-source-list
+         '("com.apple.keylayout.US"
+           "com.apple.inputmethod.Kotoeri.Roman"
+           "com.apple.inputmethod.OtherIME"
+           "com.apple.inputmethod.Kotoeri.Japanese"
+           "com.apple.inputmethod.Kotoeri.RomajiTyping"))
+        (mac-ime-ime-on-input-source-regexps '("romajityping" "japanese")))
+    
+    ;; 1. Both exist: preferred 1st (romajityping) should be selected
+    (should (equal (mac-ime--get-ime-on-input-source)
+                   "com.apple.inputmethod.Kotoeri.RomajiTyping"))
+    
+    ;; Reset cache
+    (setq mac-ime-last-on-input-source nil)
+    
+    ;; 2. Only 2nd exists: 2nd (japanese) should be selected
+    (let ((mac-ime-mock-source-list
+           '("com.apple.keylayout.US"
+             "com.apple.inputmethod.Kotoeri.Roman"
+             "com.apple.inputmethod.OtherIME"
+             "com.apple.inputmethod.Kotoeri.Japanese")))
+      (should (equal (mac-ime--get-ime-on-input-source)
+                     "com.apple.inputmethod.Kotoeri.Japanese")))
+    
+    ;; Reset cache
+    (setq mac-ime-last-on-input-source nil)
+    
+    ;; 3. Neither exists: fallback to first non-no-ime source (OtherIME)
+    (let ((mac-ime-mock-source-list
+           '("com.apple.keylayout.US"
+             "com.apple.inputmethod.Kotoeri.Roman"
+             "com.apple.inputmethod.OtherIME")))
+      (should (equal (mac-ime--get-ime-on-input-source)
+                     "com.apple.inputmethod.OtherIME")))))
+
 (provide 'mac-ime-mock-test)

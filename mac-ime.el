@@ -522,6 +522,7 @@ Resets sync state and synchronizes input method."
     (mac-ime--debug 2 "mac-ime--on-focus called")
     (setq mac-ime--sync-paused nil
           mac-ime--expected-input-source nil)
+    (mac-ime--check-input-source-change)
     (mac-ime--sync-input-method)))
 
 (defun mac-ime--sync-input-method ()
@@ -553,9 +554,10 @@ Resets sync state and synchronizes input method."
   "Activate the IME input source.
 Uses `mac-ime--get-ime-on-input-source` to determine the input source."
   (interactive)
-  (let ((source (mac-ime--get-ime-on-input-source)))
-    (mac-ime--debug 2 "mac-ime-activate-ime: source=%s buffer=%s" source (current-buffer))
-    (when source
+  (let ((source (mac-ime--get-ime-on-input-source))
+        (current (mac-ime-get-input-source)))
+    (mac-ime--debug 2 "mac-ime-activate-ime: source=%s (current=%s) buffer=%s" source current (current-buffer))
+    (when (and source current (not (string= source current)))
       (mac-ime-set-input-source source)
       (setq mac-ime--sync-paused t
             mac-ime--expected-input-source source))))
@@ -565,9 +567,10 @@ Uses `mac-ime--get-ime-on-input-source` to determine the input source."
   "Deactivate the IME input source.
 Uses `mac-ime--get-ime-off-input-source` to determine the input source."
   (interactive)
-  (let ((source (mac-ime--get-ime-off-input-source)))
-    (mac-ime--debug 2 "mac-ime-deactivate-ime: source=%s buffer=%s" source (current-buffer))
-    (when source
+  (let ((source (mac-ime--get-ime-off-input-source))
+        (current (mac-ime-get-input-source)))
+    (mac-ime--debug 2 "mac-ime-deactivate-ime: source=%s (current=%s) buffer=%s" source current (current-buffer))
+    (when (and source current (not (string= source current)))
       (mac-ime-set-input-source source)
       (setq mac-ime--sync-paused t
             mac-ime--expected-input-source source))))

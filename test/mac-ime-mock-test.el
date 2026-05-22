@@ -107,6 +107,34 @@
   (should-not mac-ime--expected-input-source)
   (mac-ime-disable))
 
+(ert-deftest mac-ime-focus-change-sync-kana-test ()
+  "Test that focus change with a new external IME source updates cache and does not revert."
+  (mac-ime-test-reset)
+  (mac-ime-enable)
+  
+  ;; Setup: Last ON source was RomajiTyping.
+  (setq mac-ime-last-on-input-source "com.apple.inputmethod.Kotoeri.RomajiTyping")
+  (setq mac-ime--current-input-source "com.apple.keylayout.US")
+  (setq current-input-method nil)
+  
+  ;; OS input source is changed externally to KanaTyping (which is ON source)
+  (mac-ime-internal-set-input-source "com.apple.inputmethod.Kotoeri.KanaTyping")
+  
+  ;; Simulate focus change (Emacs becomes active)
+  (cl-letf (((symbol-function 'frame-focus-state) (lambda (&optional _frame) t)))
+    (funcall after-focus-change-function))
+  
+  ;; Check that last ON source is updated to KanaTyping
+  (should (equal mac-ime-last-on-input-source "com.apple.inputmethod.Kotoeri.KanaTyping"))
+  
+  ;; Check that input method is activated
+  (should (equal current-input-method mac-ime-input-method))
+  
+  ;; Check that OS input source was NOT reverted to RomajiTyping
+  (should (equal (mac-ime-internal-get-input-source) "com.apple.inputmethod.Kotoeri.KanaTyping"))
+  
+  (mac-ime-disable))
+
 (ert-deftest mac-ime-unload-function-cleans-up-test ()
   "Test that `mac-ime-unload-function` cleans up runtime state."
   (mac-ime-test-reset)

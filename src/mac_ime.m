@@ -48,8 +48,10 @@ static emacs_value Fmac_ime_start(emacs_env *env, ptrdiff_t nargs, emacs_value a
                                                       object:nil
                                                        queue:[NSOperationQueue mainQueue]
                                                   usingBlock:^(NSNotification * _Nonnull note) {
-        // Enqueue a dummy event (keycode = -1) when the input source changes
-        enqueue_event_data(-1, 0, NO);
+        // Enqueue a dummy event (keycode = -1) when the input source changes, but only if Emacs is active.
+        if ([NSApp isActive]) {
+            enqueue_event_data(-1, 0, NO);
+        }
     }];
 
     // Add Local Monitor

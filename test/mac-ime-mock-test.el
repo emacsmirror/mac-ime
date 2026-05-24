@@ -340,4 +340,25 @@
     ;; Verify that synchronization was triggered and the cached current input source is updated
     (should (equal mac-ime--current-input-source "com.apple.inputmethod.Kotoeri.RomajiTyping"))))
 
+(ert-deftest mac-ime-already-loaded-version-check-test ()
+  "Test version checking when module is already loaded."
+  (mac-ime-test-reset)
+  ;; Ensure mock module is "loaded"
+  (mac-ime-mock-enable)
+  ;; Temporarily remove the mock override advice on mac-ime--load-module so we can test it
+  (advice-remove 'mac-ime--load-module #'ignore)
+  (should (featurep 'mac-ime-module))
+  
+  (unwind-protect
+      (progn
+        ;; 1. If required-version is compatible (0.1.0), it should pass
+        (let ((mac-ime-required-module-version "0.1.0"))
+          (mac-ime--load-module))
+        
+        ;; 2. If required-version is incompatible (0.2.0), it should raise an error
+        (let ((mac-ime-required-module-version "0.2.0"))
+          (should-error (mac-ime--load-module) :type 'error)))
+    ;; Clean up: restore the mock advice to not break other mock tests
+    (advice-add 'mac-ime--load-module :override #'ignore)))
+
 (provide 'mac-ime-mock-test)

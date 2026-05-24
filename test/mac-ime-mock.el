@@ -76,7 +76,10 @@
       nil))
 
   (defun mac-ime-internal-get-input-source-list ()
-    mac-ime-mock-source-list))
+    mac-ime-mock-source-list)
+
+  (defun mac-ime-internal-version ()
+    "0.1.0"))
 
 ;; Override mac-ime--load-module to do nothing but ensure our mocks are ready
 (defun mac-ime-mock-enable ()

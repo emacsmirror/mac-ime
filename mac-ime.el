@@ -25,12 +25,16 @@
 (declare-function mac-ime-internal-poll nil (hook-func))
 (declare-function mac-ime-internal-start nil ())
 (declare-function mac-ime-internal-stop nil ())
+(declare-function mac-ime-internal-version nil ())
 
 (defconst mac-ime-input-method "mac-ime"
   "Name of the mac-ime input method.")
 
 (defvar mac-ime-module-file "mac-ime-module.so"
   "Name of the dynamic module file.")
+
+(defconst mac-ime-required-module-version "0.1.0"
+  "Required minimum version of the mac-ime-module.so.")
 
 (defvar mac-ime-module-path
   (expand-file-name mac-ime-module-file
@@ -338,19 +342,55 @@ CONVERTING-P is non-nil if IME is currently converting."
             (mac-ime--debug 2 "mac-ime-deactivate-ime-on-prefix: Key %S (or translation) is bound to a keymap, deactivating IME" event)
             (mac-ime-deactivate-ime-temporarily)))))))
 
+(defun mac-ime--check-module-loadable (path)
+  "Check if the module at PATH is loadable.
+Raises an error if the module does not exist, is not readable,
+is quarantined, or has an incompatible version."
+  (unless (file-exists-p path)
+    (error "mac-ime: Module not found at %s" path))
+  (unless (file-readable-p path)
+    (error "mac-ime: Module at %s is not readable" path))
+  ;; Check quarantine
+  (when (and (executable-find "xattr")
+             (zerop (call-process "xattr" nil nil nil "-p" "com.apple.quarantine" path)))
+    (error (concat "mac-ime: Module `%s' has com.apple.quarantine and cannot be loaded.\n"
+                   "Please run: xattr -d com.apple.quarantine %s")
+           path path))
+  ;; Check embedded version
+  (let ((module-ver
+         (with-temp-buffer
+           (set-buffer-multibyte nil)
+           (insert-file-contents-literally path)
+           (goto-char (point-min))
+           (when (re-search-forward "mac-ime-module-version:\\([0-9.]+\\)" nil t)
+             (decode-coding-string (match-string 1) 'utf-8)))))
+    (unless module-ver
+      (error "mac-ime: Module `%s' does not contain a version signature" path))
+    (unless (version<= mac-ime-required-module-version module-ver)
+      (error "mac-ime: Module version `%s' is older than required `%s'. Please rebuild the module."
+             module-ver mac-ime-required-module-version))))
+
 (defun mac-ime--load-module ()
   "Load the dynamic module if not already loaded."
-  (unless (featurep 'mac-ime-module)
-    (if (file-exists-p mac-ime-module-path)
-        (condition-case err
-            (module-load mac-ime-module-path)
-          (error (concat "mac-ime: Failed to load module `%s': %s\n"
-                         "Hint: On macOS, this can be caused by quarantine.\n"
-                         "Try: xattr -d com.apple.quarantine %s")
-                 mac-ime-module-path
-                 (error-message-string err)
-                 mac-ime-module-path))
-      (error "mac-ime: Module not found at %s" mac-ime-module-path))))
+  (if (featurep 'mac-ime-module)
+      ;; Already loaded: verify version compatibility of the loaded module (e.g. after package update)
+      (let ((loaded-ver (mac-ime-internal-version)))
+        (unless (version<= mac-ime-required-module-version loaded-ver)
+          (error "Loaded module version `%s' is older than required `%s'. Please restart Emacs"
+                 loaded-ver mac-ime-required-module-version)))
+    ;; Not loaded: verify and load
+    (mac-ime--check-module-loadable mac-ime-module-path)
+    (condition-case err
+        (progn
+          (module-load mac-ime-module-path)
+          ;; Double check version at runtime
+          (let ((loaded-ver (mac-ime-internal-version)))
+            (unless (version<= mac-ime-required-module-version loaded-ver)
+              (error "Loaded module version `%s' is older than required `%s'"
+                     loaded-ver mac-ime-required-module-version))))
+      (error (error "mac-ime: Failed to load module `%s': %s"
+                    mac-ime-module-path
+                    (error-message-string err))))))
 
 (defvar mac-ime--last-selected-buffer nil
   "The buffer that was current during the last window selection change.")
@@ -621,5 +661,14 @@ This function disables hooks, timers, and advices via
   (mac-ime-disable)
   nil)
       
+;; Verify already-loaded module version at package load time
+(when (featurep 'mac-ime-module)
+  (let ((loaded-ver (mac-ime-internal-version)))
+    (unless (version<= mac-ime-required-module-version loaded-ver)
+      (display-warning 'mac-ime
+                       (format "Loaded module version `%s' is older than required `%s'. Please restart Emacs."
+                               loaded-ver mac-ime-required-module-version)
+                       :warning))))
+
 (provide 'mac-ime)
 ;;; mac-ime.el ends here

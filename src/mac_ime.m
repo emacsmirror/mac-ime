@@ -3,6 +3,9 @@
 #include "emacs-module.h"
 #include <pthread.h>
 
+#define MAC_IME_MODULE_VERSION "0.1.0"
+__attribute__((used)) static const char *mac_ime_module_version_string = "mac-ime-module-version:" MAC_IME_MODULE_VERSION;
+
 int plugin_is_GPL_compatible;
 
 // Global variables to manage state
@@ -199,6 +202,11 @@ static emacs_value Fmac_ime_set_input_source(emacs_env *env, ptrdiff_t nargs, em
     return (status == noErr) ? env->intern(env, "t") : env->intern(env, "nil");
 }
 
+// --- Module Function: Version ---
+static emacs_value Fmac_ime_version(emacs_env *env, ptrdiff_t nargs, emacs_value args[], void *data) {
+    return env->make_string(env, mac_ime_module_version_string + 23, sizeof(MAC_IME_MODULE_VERSION) - 1);
+}
+
 // --- Module Function: Get Input Source List ---
 static emacs_value Fmac_ime_get_input_source_list(emacs_env *env, ptrdiff_t nargs, emacs_value args[], void *data) {
     // Filter for selectable input sources (visible in the menu)
@@ -235,6 +243,12 @@ int emacs_module_init(struct emacs_runtime *ert) {
 
     // Define fset helper
     emacs_value fset = env->intern(env, "fset");
+
+    // Register `mac-ime-internal-version`
+    emacs_value func_version = env->make_function(env, 0, 0, Fmac_ime_version, "Get the module version.", NULL);
+    emacs_value sym_version = env->intern(env, "mac-ime-internal-version");
+    emacs_value args_version[] = { sym_version, func_version };
+    env->funcall(env, fset, 2, args_version);
     
     // Register `mac-ime-internal-get-input-source-list`
     emacs_value func_get_list = env->make_function(env, 0, 0, Fmac_ime_get_input_source_list, "Get a list of all selectable input source IDs.", NULL);

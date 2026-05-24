@@ -2,7 +2,7 @@
 
 ;; Copyright (C) 2025 Masami
 ;; Author: Masami Iwata
-;; Version: 0.1.5
+;; Version: 0.1.6
 ;; Keywords: mac, input, ime
 ;; Package-Requires: ((emacs "27.1"))
 ;; URL: https://github.com/ma0001/mac-ime
@@ -136,6 +136,16 @@ If nil, `mac-ime-last-on-input-source` or the first input source NOT matching
                  (string :tag "Input Source ID"))
   :group 'mac-ime)
 
+(defcustom mac-ime-ime-on-input-source-regexps '("romajityping" "japanese")
+  "List of regexps matching input source IDs to prefer when turning on IME.
+Regexps are checked in order.  The first one matching any available
+input source will be chosen.
+
+Note that this variable is evaluated only when `mac-ime-last-on-input-source'
+is nil and `toggle-input-method' (or `activate-input-method') is called."
+  :type '(repeat regexp)
+  :group 'mac-ime)
+
 (defcustom mac-ime-auto-deactivate-functions '((read-string . 4)
                                                (read-char . 1)
                                                (read-event . 1)
@@ -166,6 +176,11 @@ because `universal-argument` is only called once.  `universal-argument--mode`
 is called by `universal-argument`, `universal-argument-more`, and
 `digit-argument`, ensuring IME is deactivated for the entire sequence."
   :type '(repeat function)
+  :group 'mac-ime)
+
+(defcustom mac-ime-poll-interval 0.1
+  "Interval in seconds for polling input source events and status."
+  :type 'number
   :group 'mac-ime)
 
 (defcustom mac-ime-debug-level 0
@@ -229,15 +244,23 @@ If that is also nil, find the first input source matching
   "Return the input source ID to use to turn on IME.
 If `mac-ime-ime-on-input-source` is non-nil, return it.
 Otherwise, use `mac-ime-last-on-input-source`.
-If that is also nil, find the first input source NOT matching
+If that is also nil, find the first input source matching one of the regexps
+in `mac-ime-ime-on-input-source-regexps` in order.
+If no match is found, find the first input source NOT matching
 `mac-ime-no-ime-input-source-regexp` and cache it."
   (or mac-ime-ime-on-input-source
       mac-ime-last-on-input-source
       (setq mac-ime-last-on-input-source
-            (cl-loop for source in (mac-ime-get-input-source-list)
-                     if (not (let ((case-fold-search t))
-                               (string-match-p mac-ime-no-ime-input-source-regexp source)))
-                     return source))))
+            (let ((sources (mac-ime-get-input-source-list)))
+              (or (cl-loop for regexp in mac-ime-ime-on-input-source-regexps
+                           thereis (cl-loop for source in sources
+                                            if (let ((case-fold-search t))
+                                                 (string-match-p regexp source))
+                                            return source))
+                  (cl-loop for source in sources
+                           if (not (let ((case-fold-search t))
+                                     (string-match-p mac-ime-no-ime-input-source-regexp source)))
+                           return source))))))
 
 (defun mac-ime--restore-input-source ()
   "Restore the saved input source."
@@ -303,7 +326,8 @@ KEYCODE is the virtual key code.
 MODIFIERS is the modifier flags.
 CONVERTING-P is non-nil if IME is currently converting."
   (mac-ime--debug 1 "Key event: keycode=%d, modifiers=%d, converting=%s" keycode modifiers converting-p)
-  (run-hook-with-args 'mac-ime-functions keycode modifiers converting-p)
+  (when (>= keycode 0)
+    (run-hook-with-args 'mac-ime-functions keycode modifiers converting-p))
   ;; Skip synchronization if the buffer has changed recently.
   ;; This prevents race conditions where the poll runs before window-selection-change-functions.
   (let ((current (current-buffer)))
@@ -320,12 +344,11 @@ off-source, others to on-source."
   (unless mac-ime--ignore-input-source-change
     (let ((current (mac-ime-get-input-source)))
       (when (and current
-                 mac-ime--current-input-source
                  (not (string= current mac-ime--current-input-source)))
         (let ((case-fold-search t))
-          (if (string-match-p mac-ime-no-ime-input-source-regexp mac-ime--current-input-source)
-              (setq mac-ime-last-off-input-source mac-ime--current-input-source)
-            (setq mac-ime-last-on-input-source mac-ime--current-input-source))))
+          (if (string-match-p mac-ime-no-ime-input-source-regexp current)
+              (setq mac-ime-last-off-input-source current)
+            (setq mac-ime-last-on-input-source current))))
       (setq mac-ime--current-input-source current))))
 
 (defun mac-ime-poll ()
@@ -364,7 +387,7 @@ Otherwise, deactivate IME."
   (when (featurep 'mac-ime-module)
     (mac-ime-internal-start)
     (unless mac-ime-timer
-      (setq mac-ime-timer (run-with-idle-timer 0 t #'mac-ime-poll))
+      (setq mac-ime-timer (run-with-timer 0 mac-ime-poll-interval #'mac-ime-poll))
       ;; Use a negative depth (-100) to ensure mac-ime-poll runs BEFORE other hooks,
       ;; specifically before mac-ime--restore-input-source (which has depth 100).
       ;; This prevents the IME from being restored before the poll can detect the event.
@@ -499,6 +522,7 @@ Resets sync state and synchronizes input method."
     (mac-ime--debug 2 "mac-ime--on-focus called")
     (setq mac-ime--sync-paused nil
           mac-ime--expected-input-source nil)
+    (mac-ime--check-input-source-change)
     (mac-ime--sync-input-method)))
 
 (defun mac-ime--sync-input-method ()
@@ -530,9 +554,10 @@ Resets sync state and synchronizes input method."
   "Activate the IME input source.
 Uses `mac-ime--get-ime-on-input-source` to determine the input source."
   (interactive)
-  (let ((source (mac-ime--get-ime-on-input-source)))
-    (mac-ime--debug 2 "mac-ime-activate-ime: source=%s buffer=%s" source (current-buffer))
-    (when source
+  (let ((source (mac-ime--get-ime-on-input-source))
+        (current (mac-ime-get-input-source)))
+    (mac-ime--debug 2 "mac-ime-activate-ime: source=%s (current=%s) buffer=%s" source current (current-buffer))
+    (when (and source current (not (string= source current)))
       (mac-ime-set-input-source source)
       (setq mac-ime--sync-paused t
             mac-ime--expected-input-source source))))
@@ -542,9 +567,10 @@ Uses `mac-ime--get-ime-on-input-source` to determine the input source."
   "Deactivate the IME input source.
 Uses `mac-ime--get-ime-off-input-source` to determine the input source."
   (interactive)
-  (let ((source (mac-ime--get-ime-off-input-source)))
-    (mac-ime--debug 2 "mac-ime-deactivate-ime: source=%s buffer=%s" source (current-buffer))
-    (when source
+  (let ((source (mac-ime--get-ime-off-input-source))
+        (current (mac-ime-get-input-source)))
+    (mac-ime--debug 2 "mac-ime-deactivate-ime: source=%s (current=%s) buffer=%s" source current (current-buffer))
+    (when (and source current (not (string= source current)))
       (mac-ime-set-input-source source)
       (setq mac-ime--sync-paused t
             mac-ime--expected-input-source source))))

@@ -107,6 +107,34 @@
   (should-not mac-ime--expected-input-source)
   (mac-ime-disable))
 
+(ert-deftest mac-ime-focus-change-sync-kana-test ()
+  "Test that focus change with a new external IME source updates cache and does not revert."
+  (mac-ime-test-reset)
+  (mac-ime-enable)
+  
+  ;; Setup: Last ON source was RomajiTyping.
+  (setq mac-ime-last-on-input-source "com.apple.inputmethod.Kotoeri.RomajiTyping")
+  (setq mac-ime--current-input-source "com.apple.keylayout.US")
+  (setq current-input-method nil)
+  
+  ;; OS input source is changed externally to KanaTyping (which is ON source)
+  (mac-ime-internal-set-input-source "com.apple.inputmethod.Kotoeri.KanaTyping")
+  
+  ;; Simulate focus change (Emacs becomes active)
+  (cl-letf (((symbol-function 'frame-focus-state) (lambda (&optional _frame) t)))
+    (funcall after-focus-change-function))
+  
+  ;; Check that last ON source is updated to KanaTyping
+  (should (equal mac-ime-last-on-input-source "com.apple.inputmethod.Kotoeri.KanaTyping"))
+  
+  ;; Check that input method is activated
+  (should (equal current-input-method mac-ime-input-method))
+  
+  ;; Check that OS input source was NOT reverted to RomajiTyping
+  (should (equal (mac-ime-internal-get-input-source) "com.apple.inputmethod.Kotoeri.KanaTyping"))
+  
+  (mac-ime-disable))
+
 (ert-deftest mac-ime-unload-function-cleans-up-test ()
   "Test that `mac-ime-unload-function` cleans up runtime state."
   (mac-ime-test-reset)
@@ -210,5 +238,70 @@
     
     ;; Check if IME was NOT deactivated (input source remains RomajiTyping)
     (should (equal (mac-ime-internal-get-input-source) "com.apple.inputmethod.Kotoeri.RomajiTyping"))))
+
+(ert-deftest mac-ime-get-ime-on-input-source-priority-test ()
+  "Test prioritized IME-on input source selection."
+  (mac-ime-test-reset)
+  (let ((mac-ime-mock-source-list
+         '("com.apple.keylayout.US"
+           "com.apple.inputmethod.Kotoeri.Roman"
+           "com.apple.inputmethod.OtherIME"
+           "com.apple.inputmethod.Kotoeri.Japanese"
+           "com.apple.inputmethod.Kotoeri.RomajiTyping"))
+        (mac-ime-ime-on-input-source-regexps '("romajityping" "japanese")))
+    
+    ;; 1. Both exist: preferred 1st (romajityping) should be selected
+    (should (equal (mac-ime--get-ime-on-input-source)
+                   "com.apple.inputmethod.Kotoeri.RomajiTyping"))
+    
+    ;; Reset cache
+    (setq mac-ime-last-on-input-source nil)
+    
+    ;; 2. Only 2nd exists: 2nd (japanese) should be selected
+    (let ((mac-ime-mock-source-list
+           '("com.apple.keylayout.US"
+             "com.apple.inputmethod.Kotoeri.Roman"
+             "com.apple.inputmethod.OtherIME"
+             "com.apple.inputmethod.Kotoeri.Japanese")))
+      (should (equal (mac-ime--get-ime-on-input-source)
+                     "com.apple.inputmethod.Kotoeri.Japanese")))
+    
+    ;; Reset cache
+    (setq mac-ime-last-on-input-source nil)
+    
+    ;; 3. Neither exists: fallback to first non-no-ime source (OtherIME)
+    (let ((mac-ime-mock-source-list
+           '("com.apple.keylayout.US"
+             "com.apple.inputmethod.Kotoeri.Roman"
+             "com.apple.inputmethod.OtherIME")))
+      (should (equal (mac-ime--get-ime-on-input-source)
+                     "com.apple.inputmethod.OtherIME")))))
+
+(ert-deftest mac-ime-dummy-event-test ()
+  "Test that dummy events (keycode < 0) skip key hooks but trigger sync."
+  (mac-ime-test-reset)
+  (mac-ime-internal-start)
+  (setq mac-ime--last-selected-buffer (current-buffer))
+  
+  (let ((hook-called nil))
+    (add-hook 'mac-ime-functions (lambda (k m c) (setq hook-called t)))
+    
+    ;; Set up initial input source (US)
+    (mac-ime-internal-set-input-source "com.apple.keylayout.US")
+    (setq mac-ime--current-input-source "com.apple.keylayout.US")
+    
+    ;; Simulate a dummy event with keycode = -1 (input source change)
+    ;; and simulate changing the mock input source to RomajiTyping
+    (setq mac-ime-mock-current-source "com.apple.inputmethod.Kotoeri.RomajiTyping")
+    (mac-ime-mock-simulate-event -1 0)
+    
+    ;; Poll
+    (mac-ime-poll)
+    
+    ;; Verify that the key hook was NOT called
+    (should-not hook-called)
+    
+    ;; Verify that synchronization was triggered and the cached current input source is updated
+    (should (equal mac-ime--current-input-source "com.apple.inputmethod.Kotoeri.RomajiTyping"))))
 
 (provide 'mac-ime-mock-test)

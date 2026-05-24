@@ -53,15 +53,15 @@
   (mac-ime-internal-start)
   
   (let ((called nil))
-    (add-hook 'mac-ime-functions (lambda (k m c) (setq called (list k m c))))
+    (add-hook 'mac-ime-functions (lambda (k m c ci cv) (setq called (list k m c ci cv))))
     
     ;; Simulate 'x' key (keycode 7) with no modifiers
-    (mac-ime-mock-simulate-event 7 0)
+    (mac-ime-mock-simulate-event 7 0 "x" "x")
     
     ;; Poll should trigger the hook
     (mac-ime-poll)
     
-    (should (equal called '(7 0 nil)))))
+    (should (equal called '(7 0 "x" "x" nil)))))
 
 (ert-deftest mac-ime-auto-deactivate-on-prefix-test ()
   "Test automatic IME deactivation on prefix key."
@@ -69,28 +69,68 @@
   ;; Setup: IME is ON
   (mac-ime-internal-set-input-source "com.apple.inputmethod.Kotoeri.RomajiTyping")
   (setq current-input-method mac-ime-input-method)
+  (setq mac-ime-last-off-input-source "com.apple.keylayout.US")
   
-  ;; Configure prefix key: C-j (keycode 38, control modifier)
-  (defconst mac-ime-kVK_ANSI_J 38)
-  (let ((mac-ime-prefix-keys `((,mac-ime-kVK_ANSI_J . ,mac-ime-NSEventModifierFlagControl)))
-        (mac-ime-ime-off-input-source "com.apple.keylayout.US"))
-    
-    (add-hook 'mac-ime-functions #'mac-ime-deactivate-ime-on-prefix)
-    
-    ;; Simulate C-j
-    (mac-ime-mock-simulate-event mac-ime-kVK_ANSI_J mac-ime-NSEventModifierFlagControl)
-    
-    ;; Poll
-    (mac-ime-poll)
-    
-    ;; Check if IME was deactivated (input source changed to US)
-    (should (equal (mac-ime-internal-get-input-source) "com.apple.keylayout.US"))
-    
-    ;; Run pre-command-hook to restore IME
-    (run-hooks 'pre-command-hook)
-    
-    ;; Check if IME was restored
-    (should (equal (mac-ime-internal-get-input-source) "com.apple.inputmethod.Kotoeri.RomajiTyping"))))
+  (add-hook 'mac-ime-functions #'mac-ime-deactivate-ime-on-prefix)
+  
+  ;; Simulate C-x (Control flag, characters = "\x18", charactersIgnoring = "x")
+  (mac-ime-mock-simulate-event 7 mac-ime-NSEventModifierFlagControl "\x18" "x")
+  
+  ;; Poll
+  (mac-ime-poll)
+  
+  ;; Check if IME was deactivated (input source changed to US)
+  (should (equal (mac-ime-internal-get-input-source) "com.apple.keylayout.US"))
+  
+  ;; Run pre-command-hook to restore IME
+  (run-hooks 'pre-command-hook)
+  
+  ;; Check if IME was restored
+  (should (equal (mac-ime-internal-get-input-source) "com.apple.inputmethod.Kotoeri.RomajiTyping")))
+
+(ert-deftest mac-ime-auto-deactivate-on-prefix-esc-test ()
+  "Test automatic IME deactivation on Escape prefix key."
+  (mac-ime-test-reset)
+  ;; Setup: IME is ON
+  (mac-ime-internal-set-input-source "com.apple.inputmethod.Kotoeri.RomajiTyping")
+  (setq current-input-method mac-ime-input-method)
+  (setq mac-ime-last-off-input-source "com.apple.keylayout.US")
+  
+  (add-hook 'mac-ime-functions #'mac-ime-deactivate-ime-on-prefix)
+  
+  ;; Simulate ESC (keycode 53, no modifiers, characters = "\x1b", charactersIgnoring = "\x1b")
+  (mac-ime-mock-simulate-event 53 0 "\x1b" "\x1b")
+  
+  ;; Poll
+  (mac-ime-poll)
+  
+  ;; Check if IME was deactivated (input source changed to US)
+  (should (equal (mac-ime-internal-get-input-source) "com.apple.keylayout.US"))
+  
+  ;; Run pre-command-hook to restore IME
+  (run-hooks 'pre-command-hook)
+  
+  ;; Check if IME was restored
+  (should (equal (mac-ime-internal-get-input-source) "com.apple.inputmethod.Kotoeri.RomajiTyping")))
+
+(ert-deftest mac-ime-no-deactivate-on-non-prefix-test ()
+  "Test that IME is not deactivated when a non-prefix key is pressed."
+  (mac-ime-test-reset)
+  ;; Setup: IME is ON
+  (mac-ime-internal-set-input-source "com.apple.inputmethod.Kotoeri.RomajiTyping")
+  (setq current-input-method mac-ime-input-method)
+  (setq mac-ime-last-off-input-source "com.apple.keylayout.US")
+  
+  (add-hook 'mac-ime-functions #'mac-ime-deactivate-ime-on-prefix)
+  
+  ;; Simulate 'a' key (keycode 0, no modifiers, characters = "a", charactersIgnoring = "a")
+  (mac-ime-mock-simulate-event 0 0 "a" "a")
+  
+  ;; Poll
+  (mac-ime-poll)
+  
+  ;; Check if IME was NOT deactivated (input source remains RomajiTyping)
+  (should (equal (mac-ime-internal-get-input-source) "com.apple.inputmethod.Kotoeri.RomajiTyping")))
 
 (ert-deftest mac-ime-focus-change-test ()
   "Test focus change handling."
@@ -219,25 +259,21 @@
   ;; Setup: IME is ON
   (mac-ime-internal-set-input-source "com.apple.inputmethod.Kotoeri.RomajiTyping")
   (setq current-input-method mac-ime-input-method)
+  (setq mac-ime-last-off-input-source "com.apple.keylayout.US")
   
-  ;; Configure prefix key: C-j
-  (defconst mac-ime-kVK_ANSI_J 38)
-  (let ((mac-ime-prefix-keys `((,mac-ime-kVK_ANSI_J . ,mac-ime-NSEventModifierFlagControl)))
-        (mac-ime-ime-off-input-source "com.apple.keylayout.US"))
-    
-    (add-hook 'mac-ime-functions #'mac-ime-deactivate-ime-on-prefix)
-    
-    ;; Set Converting to TRUE
-    (setq mac-ime-mock-converting t)
+  (add-hook 'mac-ime-functions #'mac-ime-deactivate-ime-on-prefix)
+  
+  ;; Set Converting to TRUE
+  (setq mac-ime-mock-converting t)
 
-    ;; Simulate C-j
-    (mac-ime-mock-simulate-event mac-ime-kVK_ANSI_J mac-ime-NSEventModifierFlagControl)
-    
-    ;; Poll
-    (mac-ime-poll)
-    
-    ;; Check if IME was NOT deactivated (input source remains RomajiTyping)
-    (should (equal (mac-ime-internal-get-input-source) "com.apple.inputmethod.Kotoeri.RomajiTyping"))))
+  ;; Simulate C-x (Control flag, characters = "\x18", charactersIgnoring = "x")
+  (mac-ime-mock-simulate-event 7 mac-ime-NSEventModifierFlagControl "\x18" "x")
+  
+  ;; Poll
+  (mac-ime-poll)
+  
+  ;; Check if IME was NOT deactivated (input source remains RomajiTyping)
+  (should (equal (mac-ime-internal-get-input-source) "com.apple.inputmethod.Kotoeri.RomajiTyping")))
 
 (ert-deftest mac-ime-get-ime-on-input-source-priority-test ()
   "Test prioritized IME-on input source selection."
@@ -284,7 +320,7 @@
   (setq mac-ime--last-selected-buffer (current-buffer))
   
   (let ((hook-called nil))
-    (add-hook 'mac-ime-functions (lambda (k m c) (setq hook-called t)))
+    (add-hook 'mac-ime-functions (lambda (k m c ci cv) (setq hook-called t)))
     
     ;; Set up initial input source (US)
     (mac-ime-internal-set-input-source "com.apple.keylayout.US")

@@ -36,10 +36,11 @@
         mac-ime-mock-current-source "com.apple.keylayout.US"
         mac-ime-mock-converting nil))
 
-(defun mac-ime-mock-simulate-event (keycode modifiers)
+(defun mac-ime-mock-simulate-event (keycode modifiers &optional characters characters-ignoring)
   "Add a simulated event to the queue."
   (setq mac-ime-mock-event-queue
-        (append mac-ime-mock-event-queue (list (list keycode modifiers mac-ime-mock-converting)))))
+        (append mac-ime-mock-event-queue
+                (list (list keycode modifiers characters characters-ignoring mac-ime-mock-converting)))))
 
 ;; Mock implementations of internal functions (only when not compiling)
 (unless (bound-and-true-p byte-compile-current-file)
@@ -54,7 +55,12 @@
   (defun mac-ime-internal-poll (callback)
     (let ((count 0))
       (dolist (event mac-ime-mock-event-queue)
-        (funcall callback (nth 0 event) (nth 1 event) (nth 2 event))
+        (funcall callback
+                 (nth 0 event)
+                 (nth 1 event)
+                 (nth 2 event)
+                 (nth 3 event)
+                 (nth 4 event))
         (setq count (1+ count)))
       (setq mac-ime-mock-event-queue nil)
       (if (> count 0) count nil)))

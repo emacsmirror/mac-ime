@@ -361,4 +361,19 @@
     ;; Clean up: restore the mock advice to not break other mock tests
     (advice-add 'mac-ime--load-module :override #'ignore)))
 
+(ert-deftest mac-ime-download-and-load-test ()
+  "Test downloading dynamic module when version mismatch is simulated."
+  (mac-ime-test-reset)
+  (let ((mac-ime-download-called nil)
+        (path "/tmp/fake-mac-ime-module.so"))
+    (cl-letf (((symbol-function 'mac-ime-download-module)
+               (lambda (&optional _tag) (setq mac-ime-download-called t)))
+              ((symbol-function 'file-exists-p)
+               (lambda (p) (if (string= p path) nil t)))
+              ((symbol-function 'y-or-n-p)
+               (lambda (_prompt) t))
+              (noninteractive nil)) ; Simulate interactive session
+      (should-error (mac-ime--check-module-loadable path) :type 'error)
+      (should mac-ime-download-called))))
+
 (provide 'mac-ime-mock-test)

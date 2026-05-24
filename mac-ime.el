@@ -27,19 +27,54 @@
 (declare-function mac-ime-internal-stop nil ())
 (declare-function mac-ime-internal-version nil ())
 
+(defconst mac-ime-version "0.1.6"
+  "Version of the mac-ime package.")
+
+(defconst mac-ime-required-module-version "0.1.0"
+  "Required minimum version of the mac-ime-module.so.")
+
+(defcustom mac-ime-module-github-repo "ma0001/mac-ime"
+  "GitHub repository owner and name for downloading the module."
+  :type 'string
+  :group 'mac-ime)
+
 (defconst mac-ime-input-method "mac-ime"
   "Name of the mac-ime input method.")
 
 (defvar mac-ime-module-file "mac-ime-module.so"
   "Name of the dynamic module file.")
 
-(defconst mac-ime-required-module-version "0.1.0"
-  "Required minimum version of the mac-ime-module.so.")
-
 (defvar mac-ime-module-path
   (expand-file-name mac-ime-module-file
                     (file-name-directory (or load-file-name buffer-file-name)))
   "Full path to the dynamic module.")
+
+(defun mac-ime-download-module (&optional tag)
+  "Download `mac-ime-module.so` from GitHub for TAG using curl.
+If TAG is nil, it defaults to \"v<mac-ime-version>\"."
+  (interactive (list (read-string "Tag/Branch: " (concat "v" mac-ime-version))))
+  (let* ((tag (if (or (null tag) (string= tag ""))
+                  (concat "v" mac-ime-version)
+                tag))
+         (url (format "https://raw.githubusercontent.com/%s/%s/mac-ime-module.so"
+                      mac-ime-module-github-repo tag))
+         (dest-path mac-ime-module-path)
+         (temp-path (concat dest-path ".tmp")))
+    (unless (executable-find "curl")
+      (error "mac-ime: `curl` command not found. Please install curl or download the module manually"))
+    (message "mac-ime: Downloading mac-ime-module.so (%s) from GitHub..." tag)
+    (let ((exit-code (call-process "curl" nil nil nil "-L" "-f" "-o" temp-path url)))
+      (if (= exit-code 0)
+          (progn
+            (rename-file temp-path dest-path t)
+            (when (executable-find "xattr")
+              (ignore-errors
+                (call-process "xattr" nil nil nil "-d" "com.apple.quarantine" dest-path)))
+            (message "mac-ime: Successfully downloaded mac-ime-module.so for tag %s" tag)
+            t)
+        (when (file-exists-p temp-path)
+          (delete-file temp-path))
+        (error "mac-ime: Failed to download mac-ime-module.so: curl exited with code %d" exit-code)))))
 
 (defvar mac-ime-timer nil
   "Timer object for polling events.")
@@ -342,33 +377,52 @@ CONVERTING-P is non-nil if IME is currently converting."
             (mac-ime--debug 2 "mac-ime-deactivate-ime-on-prefix: Key %S (or translation) is bound to a keymap, deactivating IME" event)
             (mac-ime-deactivate-ime-temporarily)))))))
 
-(defun mac-ime--check-module-loadable (path)
+(defun mac-ime--check-module-loadable (path &optional no-retry)
   "Check if the module at PATH is loadable.
 Raises an error if the module does not exist, is not readable,
 is quarantined, or has an incompatible version."
-  (unless (file-exists-p path)
-    (error "mac-ime: Module not found at %s" path))
-  (unless (file-readable-p path)
-    (error "mac-ime: Module at %s is not readable" path))
-  ;; Check quarantine
-  (when (and (executable-find "xattr")
-             (zerop (call-process "xattr" nil nil nil "-p" "com.apple.quarantine" path)))
-    (error (concat "mac-ime: Module `%s' has com.apple.quarantine and cannot be loaded.\n"
-                   "Please run: xattr -d com.apple.quarantine %s")
-           path path))
-  ;; Check embedded version
-  (let ((module-ver
-         (with-temp-buffer
-           (set-buffer-multibyte nil)
-           (insert-file-contents-literally path)
-           (goto-char (point-min))
-           (when (re-search-forward "mac-ime-module-version:\\([0-9.]+\\)" nil t)
-             (decode-coding-string (match-string 1) 'utf-8)))))
-    (unless module-ver
-      (error "mac-ime: Module `%s' does not contain a version signature" path))
-    (unless (version<= mac-ime-required-module-version module-ver)
-      (error "mac-ime: Module version `%s' is older than required `%s'. Please rebuild the module."
-             module-ver mac-ime-required-module-version))))
+  (let ((should-download nil)
+        (reason nil))
+    (cond
+     ((not (file-exists-p path))
+      (setq should-download t
+            reason "Module file not found"))
+     ((not (file-readable-p path))
+      (setq should-download t
+            reason "Module file is not readable"))
+     (t
+      ;; Check embedded version
+      (let ((module-ver
+             (with-temp-buffer
+               (set-buffer-multibyte nil)
+               (insert-file-contents-literally path)
+               (goto-char (point-min))
+               (when (re-search-forward "mac-ime-module-version:\\([0-9.]+\\)" nil t)
+                 (decode-coding-string (match-string 1) 'utf-8)))))
+        (cond
+         ((null module-ver)
+          (setq should-download t
+                reason "Module does not contain a version signature"))
+         ((not (version<= mac-ime-required-module-version module-ver))
+          (setq should-download t
+                reason (format "Module version `%s' is older than required `%s'"
+                               module-ver mac-ime-required-module-version)))))))
+
+    (if should-download
+        (if (and (not no-retry)
+                 (not noninteractive)
+                 (y-or-n-p (format "mac-ime: %s. Download matching module from GitHub?" reason)))
+            (progn
+              (mac-ime-download-module)
+              ;; Recheck after download, passing t to prevent infinite loop
+              (mac-ime--check-module-loadable path t))
+          (error "mac-ime: Cannot proceed without a compatible module (%s)" reason))
+      ;; Check quarantine
+      (when (and (executable-find "xattr")
+                 (zerop (call-process "xattr" nil nil nil "-p" "com.apple.quarantine" path)))
+        (error (concat "mac-ime: Module `%s' has com.apple.quarantine and cannot be loaded.\n"
+                       "Please run: xattr -d com.apple.quarantine %s")
+               path path)))))
 
 (defun mac-ime--load-module ()
   "Load the dynamic module if not already loaded."
@@ -376,8 +430,14 @@ is quarantined, or has an incompatible version."
       ;; Already loaded: verify version compatibility of the loaded module (e.g. after package update)
       (let ((loaded-ver (mac-ime-internal-version)))
         (unless (version<= mac-ime-required-module-version loaded-ver)
-          (error "Loaded module version `%s' is older than required `%s'. Please restart Emacs"
-                 loaded-ver mac-ime-required-module-version)))
+          (if (and (not noninteractive)
+                   (y-or-n-p (format "mac-ime: Loaded module version `%s' is older than required `%s'. Download updated module from GitHub?"
+                                     loaded-ver mac-ime-required-module-version)))
+              (progn
+                (mac-ime-download-module)
+                (error "mac-ime: Downloaded updated module. Please restart Emacs to load the new module version"))
+            (error "mac-ime: Loaded module version `%s' is older than required `%s'. Please restart Emacs"
+                   loaded-ver mac-ime-required-module-version))))
     ;; Not loaded: verify and load
     (mac-ime--check-module-loadable mac-ime-module-path)
     (condition-case err
@@ -444,8 +504,6 @@ INPUT-METHOD is the name of the input method to activate."
   (when-let ((source (mac-ime-get-input-source)))
     (mac-ime--update-title source)))
 
-(register-input-method mac-ime-input-method "Japanese" 'mac-ime-activate-input-method "[こ]" "macOS System IME")
-
 (defun mac-ime-update-state (&optional _window)
   "Update IME state based on the current input method.
 Activate IME if `current-input-method` is `mac-ime-input-method`.
@@ -464,6 +522,7 @@ Otherwise, deactivate IME."
   (mac-ime--debug 2 "mac-ime-enable called")
   (mac-ime--load-module)
   (when (featurep 'mac-ime-module)
+    (register-input-method mac-ime-input-method "Japanese" 'mac-ime-activate-input-method "[こ]" "macOS System IME")
     (mac-ime-internal-start)
     (unless mac-ime-timer
       (setq mac-ime-timer (run-with-timer 0 mac-ime-poll-interval #'mac-ime-poll))
@@ -502,25 +561,19 @@ Otherwise, deactivate IME."
     (remove-hook 'window-selection-change-functions #'mac-ime-update-state)
     (message "mac-ime disabled.")))
 
-;;;###autoload
 (defun mac-ime-get-input-source ()
   "Get the current input source ID."
-  (mac-ime--load-module)
   (when (featurep 'mac-ime-module)
     (mac-ime-internal-get-input-source)))
 
-;;;###autoload
 (defun mac-ime-set-input-source (source-id)
   "Set the current input source to SOURCE-ID."
   (mac-ime--debug 2 "mac-ime-set-input-source: %s" source-id)
-  (mac-ime--load-module)
   (when (featurep 'mac-ime-module)
     (mac-ime-internal-set-input-source source-id)))
 
-;;;###autoload
 (defun mac-ime-get-input-source-list ()
   "Get a list of all selectable input source IDs."
-  (mac-ime--load-module)
   (when (featurep 'mac-ime-module)
     (mac-ime-internal-get-input-source-list)))
 
@@ -550,7 +603,6 @@ CONFIG is the configuration (symbol or cons)."
             (apply orig-fun args)))
       (apply orig-fun args))))
 
-;;;###autoload
 (defun mac-ime-auto-deactivate (func)
   "Add advice to FUNC to deactivate IME during its execution.
 FUNC can be a function symbol or a cons cell (FUNCTION . ARG-INDEX).
@@ -570,7 +622,6 @@ The IME state is restored after FUNC completes."
   "Advice to deactivate IME temporarily."
   (mac-ime-deactivate-ime-temporarily))
 
-;;;###autoload
 (defun mac-ime-temporary-deactivate (func)
   "Add advice to FUNC to deactivate IME temporarily before its execution."
   (advice-add func :before #'mac-ime--temporary-deactivate-advice))
@@ -628,7 +679,6 @@ Resets sync state and synchronizes input method."
               (when (equal current-input-method mac-ime-input-method)
                 (mac-ime--update-title current-source)))))))))
 
-;;;###autoload
 (defun mac-ime-activate-ime ()
   "Activate the IME input source.
 Uses `mac-ime--get-ime-on-input-source` to determine the input source."
@@ -641,7 +691,6 @@ Uses `mac-ime--get-ime-on-input-source` to determine the input source."
       (setq mac-ime--sync-paused t
             mac-ime--expected-input-source source))))
 
-;;;###autoload
 (defun mac-ime-deactivate-ime ()
   "Deactivate the IME input source.
 Uses `mac-ime--get-ime-off-input-source` to determine the input source."

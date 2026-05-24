@@ -15,7 +15,8 @@
 
 ;; Enable mock only when not compiling
 (unless (bound-and-true-p byte-compile-current-file)
-  (mac-ime-mock-enable))
+  (mac-ime-mock-enable)
+  (register-input-method mac-ime-input-method "Japanese" 'mac-ime-activate-input-method "[こ]" "macOS System IME"))
 
 (defun mac-ime-test-reset ()
   "Reset both mock and mac-ime internal state."
@@ -375,5 +376,64 @@
               (noninteractive nil)) ; Simulate interactive session
       (should-error (mac-ime--check-module-loadable path) :type 'error)
       (should mac-ime-download-called))))
+
+(ert-deftest mac-ime-download-module-version-check-test ()
+  "Test that `mac-ime-download-module` validates the downloaded module version."
+  (mac-ime-test-reset)
+  (let* ((temp-dir (make-temp-file "mac-ime-test-" t))
+         (mac-ime-module-path (expand-file-name "mac-ime-module.so" temp-dir))
+         (mac-ime-required-module-version "0.1.0")
+         (curl-exit-code 0)
+         (simulated-content "")
+         (orig-call-process (symbol-function 'call-process)))
+    (unwind-protect
+        (cl-letf (((symbol-function 'call-process)
+                   (lambda (program infile destination display &rest args)
+                     (cond
+                      ((string= program "curl")
+                       (let* ((o-idx (cl-position "-o" args :test #'string=))
+                              (temp-path (when o-idx (nth (1+ o-idx) args))))
+                         (if (= curl-exit-code 0)
+                             (when (and temp-path (> (length simulated-content) 0))
+                               (with-temp-file temp-path
+                                 (insert simulated-content)))
+                           (insert "curl: (56) The requested URL returned error: 404"))
+                         curl-exit-code))
+                      ((string= program "xattr")
+                       0)
+                      (t
+                       (apply orig-call-process program infile destination display args)))))
+                  ((symbol-function 'executable-find)
+                   (lambda (cmd) (member cmd '("curl" "xattr")))))
+          
+          ;; Case 1: Valid version downloaded
+          (setq curl-exit-code 0
+                simulated-content "some binary content mac-ime-module-version:0.1.0 dummy")
+          (should (mac-ime-download-module "v0.1.0"))
+          (should (file-exists-p mac-ime-module-path))
+          
+          ;; Clean up file for next cases
+          (delete-file mac-ime-module-path)
+          
+          ;; Case 2: Incompatible (older) version downloaded
+          (setq curl-exit-code 0
+                simulated-content "some binary content mac-ime-module-version:0.0.9 dummy")
+          (should-error (mac-ime-download-module "v0.0.9") :type 'error)
+          (should-not (file-exists-p mac-ime-module-path))
+          
+          ;; Case 3: Missing version signature
+          (setq curl-exit-code 0
+                simulated-content "some binary content without version signature")
+          (should-error (mac-ime-download-module "v0.1.0") :type 'error)
+          (should-not (file-exists-p mac-ime-module-path))
+          
+          ;; Case 4: Curl exit code failure
+          (setq curl-exit-code 1
+                simulated-content "")
+          (should-error (mac-ime-download-module "v0.1.0") :type 'error)
+          (should-not (file-exists-p mac-ime-module-path)))
+      
+      ;; Delete the temp directory
+      (delete-directory temp-dir t))))
 
 (provide 'mac-ime-mock-test)

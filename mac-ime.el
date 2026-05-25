@@ -129,12 +129,28 @@ Each function is called with five arguments: (KEYCODE MODIFIERS CHARACTERS CHARA
 (defun mac-ime-resolve-modifier-value (modifier-var)
   "Resolve the value of MODIFIER-VAR, handling `left' inheritance."
   (let ((val (if (boundp modifier-var) (symbol-value modifier-var) nil)))
+    ;; Provide fallbacks for non-GUI / batch / headless test environments where
+    ;; standard mac-* modifier variables are not bound.
+    (when (null val)
+      (setq val (cond
+                 ((eq modifier-var 'mac-control-modifier) 'control)
+                 ((eq modifier-var 'mac-right-control-modifier) 'left)
+                 ((eq modifier-var 'mac-command-modifier) 'super)
+                 ((eq modifier-var 'mac-right-command-modifier) 'left)
+                 ((eq modifier-var 'mac-option-modifier) 'meta)
+                 ((eq modifier-var 'mac-right-option-modifier) 'left)
+                 (t nil))))
     (if (eq val 'left)
         (let ((base-var-name (replace-regexp-in-string "-right-" "-" (symbol-name modifier-var))))
           (let ((base-var (intern base-var-name)))
             (if (boundp base-var)
                 (symbol-value base-var)
-              val)))
+              ;; If base var is not bound, use fallback
+              (cond
+               ((eq base-var 'mac-control-modifier) 'control)
+               ((eq base-var 'mac-command-modifier) 'super)
+               ((eq base-var 'mac-option-modifier) 'meta)
+               (t nil)))))
       val)))
 
 (defun mac-ime--event-from-cocoa (modifiers chars chars-ignoring)

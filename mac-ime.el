@@ -755,10 +755,8 @@ This function disables hooks, timers, and advices via
 (when (featurep 'mac-ime-module)
   (let ((loaded-ver (mac-ime-internal-version)))
     (unless (version<= mac-ime-required-module-version loaded-ver)
-      (display-warning 'mac-ime
-                       (format "Loaded module version `%s' is older than required `%s'. Please restart Emacs."
-                               loaded-ver mac-ime-required-module-version)
-                       :warning))))
+      (mac-ime--report-error (format "Loaded module version `%s' is older than required `%s'. Please restart Emacs."
+                                     loaded-ver mac-ime-required-module-version)))))
 
 (provide 'mac-ime)
 ;;; mac-ime.el ends here

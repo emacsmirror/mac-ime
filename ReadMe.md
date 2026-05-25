@@ -18,9 +18,14 @@ Emacsのダイナミックモジュール機能を利用してOSのIMEを制御�
 
 ## インストール
 
-ダイナミックモジュールをファットバイナリーで作成しているため、AppleシリコンでもX86搭載のMacでもリポジトリ内の (`.so` ファイル)が使えるのでビルドは不要です。
+`mac-ime` はダイナミックモジュール (`mac-ime-module.so`) を使用します。
 
-リポジトリのクローンまたはEmacs 29以降では `use-package` の `:vc` キーワードを使用してインストールできます。
+リポジトリ内にファットバイナリーで作成したモジュールを登録しているため、リポジトリのクローンをすればビルドは不要です。
+また、モジュールファイルが存在しない場合やバージョンが古い場合であっても、`mac-ime-enable`実行時に GitHub Releases から適切なモジュールを `curl` を使って自動的にダウンロード・配置します。
+
+手動でモジュールをダウンロード・更新したい場合は、`M-x mac-ime-download-module` を実行してください。
+
+Emacs 29以降では `use-package` の `:vc` キーワードを使用してインストールできます。
 
 ### リポジトリをクローンする場合
 
@@ -80,22 +85,25 @@ Emacs 29以降では `use-package` の `:vc` キーワードを使用してイ�
 
 ## トラブルシューティング
 
-### `library load disallowed by system policy` が出る
+### `library load disallowed by system policy` が出る、またはモジュールが読み込めない
 
-`mac-ime-module.so` に `com.apple.quarantine` 属性が付いている場合、
-`module-load` が失敗することがあります。  まず属性を確認してください。
+`mac-ime` はモジュールのロード前に自動的に `com.apple.quarantine` 属性の解除を試みますが、権限などの理由でロードが失敗することがあります。
+手動で属性を確認・解除するには以下を実行してください。
 
 ```bash
+# 属性の確認
 xattr -l mac-ime-module.so
-```
 
-`com.apple.quarantine` が表示された場合は、次を実行してください。
-
-```bash
+# 属性の解除
 xattr -d com.apple.quarantine mac-ime-module.so
 ```
 
-それでも解消しない場合は再ビルドを試してください。
+### モジュールのバージョン不整合警告が出る
+
+アップデート時などに「Loaded module version `X` is older than required `Y`」といった警告やエラーが表示される場合は、ロードされているモジュールが古い状態のままです。
+画面の指示に従って最新モジュールをダウンロードし、**Emacs を再起動**してください。
+
+手動で再ビルドしたい場合は、以下を実行してください。
 
 ```bash
 make clean
@@ -110,33 +118,15 @@ C-\ (toggle-input-method) や cmd-space などで日本語入力状態にする�
 
 ### プリフィックスキー入力時のIMEオフ
 
-日本語入力が有効な状態でC-xなどのプリフィックスキーを入力するとRoman入力に切り替わり、コマンド実行後は元に戻ります。
-ただし、変換中（未確定文字列が存在する場合）はIME無効化を行いません。これにより、変換中に誤ってプリフィックスキーを押してしまった場合に変換がキャンセルされるのを防ぎます。
+日本語入力が有効な状態で `C-x` などのプリフィックスキー（後続のキー入力を待つキーバインド）を入力すると、自動的に一時的にRoman入力（英語入力）に切り替わり、コマンドの実行が完了した後に元のIME状態（日本語入力など）へ復元します。
+ただし、変換中（未確定の入力文字列が存在する場合）はIMEの無効化を行いません。これにより、変換中の操作時に誤ってIMEがオフになって変換がキャンセルされるのを防ぎます。
 
-デフォルトのプリフィックスキー定義は以下の通りです
-- C-x
-- C-c
-- C-h
-- M-g
-- M-s
-- Esc
+本機能は、Emacsのアクティブなキーマップ（`key-binding`）を動的に問い合わせてプレフィックスキー判定を行います。
+そのため、ユーザー自身がキーバインドをカスタマイズしている場合や、Evilモード等の外部パッケージを導入してキーマップが変更されている場合でも、特別な設定なしで自動的にプレフィックスキーとして認識されます。
 
-特別なキーバイディングでプリフィックスキーが変わっている場合などはmac-ime-modifier-action-tableを(mac-ime-enable)前に設定することにより変えることができます。
-```elisp
-;; controlキーの修飾で 'z' (keycode 6) をプレフィックスとして扱いたい場合の例
-(setq mac-ime-modifier-action-table
-      '((control . (mac-ime-kVK_ANSI_X mac-ime-kVK_ANSI_C mac-ime-kVK_ANSI_H 6))
-        (meta . (mac-ime-kVK_ANSI_G))
-        (nomodifier . (mac-ime-kVK_Escape))))
-```
+> [!NOTE]
+> 以前のバージョンで存在した `mac-ime-prefix-keys` および `mac-ime-modifier-action-table` による手動のキーコード設定は不要になったため、廃止・削除されました。
 
-metaや、control以外のキーを使うようなキーでも制御したい場合はmac-ime-prefix-keysを設定することで可能です。mac-ime-debug-levelを1に設定することによりキーコードがメッセージに出力されるのでそれを参考に設定してください。
-
-```elisp
-;; C-j (keycode: 38, modifiers: 262401) をプレフィックスキーとして登録する例
-(setq mac-ime-prefix-keys
-      '((38 . 262401)))
-```
 
 
 ### ミニバッファ入力時のIMEオフ
@@ -207,7 +197,9 @@ mac-ime--ignore-input-source-changeが有効な間は、バッファ変更時の
 ### 基本操作
 
 - `(mac-ime-enable)`: イベントモニターを開始し、キーイベントの監視と各種フックを有効にします。
+  - 起動時にモジュールの存在とバージョン整合性をチェックし、不足や不整合がある場合は自動ダウンロードを促します。
 - `(mac-ime-disable)`: イベントモニター、タイマー、およびフックを停止・解除します。
+- `(mac-ime-download-module &optional tag)`: 指定したタグ（デフォルトは現在のパッケージバージョンに対応する `v<version>`）のダイナミックモジュールを GitHub からダウンロードして配置します。
 
 ### IME操作
 
@@ -224,13 +216,11 @@ mac-ime--ignore-input-source-changeが有効な間は、バッファ変更時の
 
 ## カスタマイズ
 
-- `mac-ime-prefix-keys`: IME無効化のトリガーとなるプレフィックスキーの設定。
-- `mac-ime-modifier-action-table`: 修飾キー（Control, Metaなど）ごとに、どのキーをプレフィックスキーとして登録するかの対応表。
 - `mac-ime-auto-deactivate-functions`: 実行時に自動的にIMEを無効化する関数のリスト。デフォルトではミニバッファ入力時などにIMEをオフにします。
 - `mac-ime-temporary-deactivate-functions`: 実行前に一時的にIMEを無効化し、次に新たなコマンドが開始される直前に元の状態に戻す関数のリスト。デフォルトでは `universal-argument` などが含まれます。
 - `mac-ime-no-ime-input-source-regexp`: どの入力ソースが「IMEオフ（Roman/英語）」であるかを判定するための正規表現。
 - `mac-ime-ime-on-input-source` / `mac-ime-ime-off-input-source`: IMEをオン/オフする際に使用する入力ソースIDを明示的に指定する場合に使用します（通常は自動判定されます）。
 - `mac-ime-title-rules`: 入力ソースIDに応じてモードラインに表示するインジケータ（`[あ]` など）を決定するルール。
 - `mac-ime-debug-level`: デバッグメッセージの出力レベル（0:なし、1:入力キー、2:詳細）。
-- `mac-ime-functions`: キーイベントが発生した際に呼び出されるフック関数リスト。
+- `mac-ime-functions`: キーイベントが発生した際に呼び出されるフック関数リスト。登録するフック関数は `(keycode modifiers characters characters-ignoring converting-p)` の5つの引数を受け取る必要があります。
 

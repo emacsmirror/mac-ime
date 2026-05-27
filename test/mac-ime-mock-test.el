@@ -352,12 +352,16 @@
   
   (unwind-protect
       (progn
-        ;; 1. If required-version is compatible (0.1.0), it should pass
+        ;; 1. If required-version matches exactly (0.1.0), it should pass
         (let ((mac-ime-required-module-version "0.1.0"))
           (mac-ime--load-module))
         
-        ;; 2. If required-version is incompatible (0.2.0), it should raise an error
+        ;; 2. If required-version does not match (newer: 0.2.0), it should raise an error
         (let ((mac-ime-required-module-version "0.2.0"))
+          (should-error (mac-ime--load-module) :type 'error))
+
+        ;; 3. If required-version does not match (older: 0.0.9), it should raise an error
+        (let ((mac-ime-required-module-version "0.0.9"))
           (should-error (mac-ime--load-module) :type 'error)))
     ;; Clean up: restore the mock advice to not break other mock tests
     (advice-add 'mac-ime--load-module :override #'ignore)))
@@ -419,6 +423,12 @@
           (setq curl-exit-code 0
                 simulated-content "some binary content mac-ime-module-version:0.0.9 dummy")
           (should-error (mac-ime-download-module "v0.0.9") :type 'error)
+          (should-not (file-exists-p mac-ime-module-path))
+          
+          ;; Case 2b: Incompatible (newer) version downloaded
+          (setq curl-exit-code 0
+                simulated-content "some binary content mac-ime-module-version:0.1.1 dummy")
+          (should-error (mac-ime-download-module "v0.1.1") :type 'error)
           (should-not (file-exists-p mac-ime-module-path))
           
           ;; Case 3: Missing version signature

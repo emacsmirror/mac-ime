@@ -31,7 +31,7 @@
   "Version of the mac-ime package.")
 
 (defconst mac-ime-required-module-version "0.1.0"
-  "Required minimum version of the mac-ime-module.so.")
+  "Required exact version of the mac-ime-module.so.")
 
 (defcustom mac-ime-module-github-repo "ma0001/mac-ime"
   "GitHub repository owner and name for downloading the module."
@@ -89,10 +89,10 @@ If TAG is nil, it defaults to \"v<mac-ime-version>\"."
                 (when (file-exists-p temp-path)
                   (delete-file temp-path))
                 (mac-ime--report-error "mac-ime: Downloaded module does not contain a version signature"))
-               ((not (version<= mac-ime-required-module-version downloaded-ver))
+               ((not (string= mac-ime-required-module-version downloaded-ver))
                 (when (file-exists-p temp-path)
                   (delete-file temp-path))
-                (mac-ime--report-error (format "mac-ime: Downloaded module version `%s' is older than required `%s'"
+                (mac-ime--report-error (format "mac-ime: Downloaded module version `%s' does not match required `%s'"
                                                downloaded-ver mac-ime-required-module-version)))
                (t
                 (rename-file temp-path dest-path t)
@@ -446,9 +446,9 @@ is quarantined, or has an incompatible version."
          ((null module-ver)
           (setq should-download t
                 reason "Module does not contain a version signature"))
-         ((not (version<= mac-ime-required-module-version module-ver))
+         ((not (string= mac-ime-required-module-version module-ver))
           (setq should-download t
-                reason (format "Module version `%s' is older than required `%s'"
+                reason (format "Module version `%s' does not match required `%s'"
                                module-ver mac-ime-required-module-version)))))))
 
     (if should-download
@@ -470,14 +470,14 @@ is quarantined, or has an incompatible version."
   (if (featurep 'mac-ime-module)
       ;; Already loaded: verify version compatibility of the loaded module (e.g. after package update)
       (let ((loaded-ver (mac-ime-internal-version)))
-        (unless (version<= mac-ime-required-module-version loaded-ver)
+        (unless (string= mac-ime-required-module-version loaded-ver)
           (if (and (not noninteractive)
-                   (y-or-n-p (format "mac-ime: Loaded module version `%s' is older than required `%s'. Download updated module from GitHub?"
+                   (y-or-n-p (format "mac-ime: Loaded module version `%s' does not match required `%s'. Download updated module from GitHub?"
                                      loaded-ver mac-ime-required-module-version)))
               (progn
                 (mac-ime-download-module)
                 (mac-ime--report-error "mac-ime: Downloaded updated module. Please restart Emacs to load the new module version"))
-            (mac-ime--report-error (format "mac-ime: Loaded module version `%s' is older than required `%s'. Please restart Emacs"
+            (mac-ime--report-error (format "mac-ime: Loaded module version `%s' does not match required `%s'. Please restart Emacs"
                                            loaded-ver mac-ime-required-module-version)))))
     ;; Not loaded: verify and load
     (mac-ime--check-module-loadable mac-ime-module-path)
@@ -486,8 +486,8 @@ is quarantined, or has an incompatible version."
           (module-load mac-ime-module-path)
           ;; Double check version at runtime
           (let ((loaded-ver (mac-ime-internal-version)))
-            (unless (version<= mac-ime-required-module-version loaded-ver)
-              (mac-ime--report-error (format "Loaded module version `%s' is older than required `%s'"
+            (unless (string= mac-ime-required-module-version loaded-ver)
+              (mac-ime--report-error (format "Loaded module version `%s' does not match required `%s'"
                                              loaded-ver mac-ime-required-module-version)))))
       (error (mac-ime--report-error (format "mac-ime: Failed to load module `%s': %s"
                                             mac-ime-module-path
@@ -754,8 +754,8 @@ This function disables hooks, timers, and advices via
 ;; Verify already-loaded module version at package load time
 (when (featurep 'mac-ime-module)
   (let ((loaded-ver (mac-ime-internal-version)))
-    (unless (version<= mac-ime-required-module-version loaded-ver)
-      (mac-ime--report-error (format "Loaded module version `%s' is older than required `%s'. Please restart Emacs."
+    (unless (string= mac-ime-required-module-version loaded-ver)
+      (mac-ime--report-error (format "Loaded module version `%s' does not match required `%s'. Please restart Emacs."
                                      loaded-ver mac-ime-required-module-version)))))
 
 (provide 'mac-ime)

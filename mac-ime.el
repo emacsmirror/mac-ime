@@ -2,7 +2,7 @@
 
 ;; Copyright (C) 2025 Masami
 ;; Author: Masami Iwata
-;; Version: 0.1.6
+;; Version: 0.2.0
 ;; Keywords: mac, input, ime
 ;; Package-Requires: ((emacs "27.1"))
 ;; URL: https://github.com/ma0001/mac-ime
@@ -27,7 +27,7 @@
 (declare-function mac-ime-internal-stop nil ())
 (declare-function mac-ime-internal-version nil ())
 
-(defconst mac-ime-version "0.1.6"
+(defconst mac-ime-version "0.2.0"
   "Version of the mac-ime package.")
 
 (defconst mac-ime-required-module-version "0.1.0"

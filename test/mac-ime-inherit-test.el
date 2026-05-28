@@ -12,11 +12,10 @@
 ;; Declare test function to silence complier warning
 (defun mac-ime-test-inherit-func (_arg1 _inherit) nil)
 
-;; Override module loading to use mock (only when not compiling)
+;; Enable mock only when not compiling
 (unless (bound-and-true-p byte-compile-current-file)
-  (defun mac-ime--load-module ()
-    (require 'mac-ime-mock)
-    (provide 'mac-ime-module)))
+  (mac-ime-mock-enable)
+  (register-input-method mac-ime-input-method "Japanese" 'mac-ime-activate-input-method "[こ]" "macOS System IME"))
 
 (defun mac-ime-test-reset ()
   (mac-ime-mock-reset)

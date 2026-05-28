@@ -15,7 +15,8 @@
 
 ;; Enable mock only when not compiling
 (unless (bound-and-true-p byte-compile-current-file)
-  (mac-ime-mock-enable))
+  (mac-ime-mock-enable)
+  (register-input-method mac-ime-input-method "Japanese" 'mac-ime-activate-input-method "[こ]" "macOS System IME"))
 
 (defun mac-ime-test-reset ()
   "Reset both mock and mac-ime internal state."
@@ -53,15 +54,15 @@
   (mac-ime-internal-start)
   
   (let ((called nil))
-    (add-hook 'mac-ime-functions (lambda (k m c) (setq called (list k m c))))
+    (add-hook 'mac-ime-functions (lambda (k m c ci cv) (setq called (list k m c ci cv))))
     
     ;; Simulate 'x' key (keycode 7) with no modifiers
-    (mac-ime-mock-simulate-event 7 0)
+    (mac-ime-mock-simulate-event 7 0 "x" "x")
     
     ;; Poll should trigger the hook
     (mac-ime-poll)
     
-    (should (equal called '(7 0 nil)))))
+    (should (equal called '(7 0 "x" "x" nil)))))
 
 (ert-deftest mac-ime-auto-deactivate-on-prefix-test ()
   "Test automatic IME deactivation on prefix key."
@@ -69,28 +70,68 @@
   ;; Setup: IME is ON
   (mac-ime-internal-set-input-source "com.apple.inputmethod.Kotoeri.RomajiTyping")
   (setq current-input-method mac-ime-input-method)
+  (setq mac-ime-last-off-input-source "com.apple.keylayout.US")
   
-  ;; Configure prefix key: C-j (keycode 38, control modifier)
-  (defconst mac-ime-kVK_ANSI_J 38)
-  (let ((mac-ime-prefix-keys `((,mac-ime-kVK_ANSI_J . ,mac-ime-NSEventModifierFlagControl)))
-        (mac-ime-ime-off-input-source "com.apple.keylayout.US"))
-    
-    (add-hook 'mac-ime-functions #'mac-ime-deactivate-ime-on-prefix)
-    
-    ;; Simulate C-j
-    (mac-ime-mock-simulate-event mac-ime-kVK_ANSI_J mac-ime-NSEventModifierFlagControl)
-    
-    ;; Poll
-    (mac-ime-poll)
-    
-    ;; Check if IME was deactivated (input source changed to US)
-    (should (equal (mac-ime-internal-get-input-source) "com.apple.keylayout.US"))
-    
-    ;; Run pre-command-hook to restore IME
-    (run-hooks 'pre-command-hook)
-    
-    ;; Check if IME was restored
-    (should (equal (mac-ime-internal-get-input-source) "com.apple.inputmethod.Kotoeri.RomajiTyping"))))
+  (add-hook 'mac-ime-functions #'mac-ime-deactivate-ime-on-prefix)
+  
+  ;; Simulate C-x (Control flag, characters = "\x18", charactersIgnoring = "x")
+  (mac-ime-mock-simulate-event 7 mac-ime-NSEventModifierFlagControl "\x18" "x")
+  
+  ;; Poll
+  (mac-ime-poll)
+  
+  ;; Check if IME was deactivated (input source changed to US)
+  (should (equal (mac-ime-internal-get-input-source) "com.apple.keylayout.US"))
+  
+  ;; Run pre-command-hook to restore IME
+  (run-hooks 'pre-command-hook)
+  
+  ;; Check if IME was restored
+  (should (equal (mac-ime-internal-get-input-source) "com.apple.inputmethod.Kotoeri.RomajiTyping")))
+
+(ert-deftest mac-ime-auto-deactivate-on-prefix-esc-test ()
+  "Test automatic IME deactivation on Escape prefix key."
+  (mac-ime-test-reset)
+  ;; Setup: IME is ON
+  (mac-ime-internal-set-input-source "com.apple.inputmethod.Kotoeri.RomajiTyping")
+  (setq current-input-method mac-ime-input-method)
+  (setq mac-ime-last-off-input-source "com.apple.keylayout.US")
+  
+  (add-hook 'mac-ime-functions #'mac-ime-deactivate-ime-on-prefix)
+  
+  ;; Simulate ESC (keycode 53, no modifiers, characters = "\x1b", charactersIgnoring = "\x1b")
+  (mac-ime-mock-simulate-event 53 0 "\x1b" "\x1b")
+  
+  ;; Poll
+  (mac-ime-poll)
+  
+  ;; Check if IME was deactivated (input source changed to US)
+  (should (equal (mac-ime-internal-get-input-source) "com.apple.keylayout.US"))
+  
+  ;; Run pre-command-hook to restore IME
+  (run-hooks 'pre-command-hook)
+  
+  ;; Check if IME was restored
+  (should (equal (mac-ime-internal-get-input-source) "com.apple.inputmethod.Kotoeri.RomajiTyping")))
+
+(ert-deftest mac-ime-no-deactivate-on-non-prefix-test ()
+  "Test that IME is not deactivated when a non-prefix key is pressed."
+  (mac-ime-test-reset)
+  ;; Setup: IME is ON
+  (mac-ime-internal-set-input-source "com.apple.inputmethod.Kotoeri.RomajiTyping")
+  (setq current-input-method mac-ime-input-method)
+  (setq mac-ime-last-off-input-source "com.apple.keylayout.US")
+  
+  (add-hook 'mac-ime-functions #'mac-ime-deactivate-ime-on-prefix)
+  
+  ;; Simulate 'a' key (keycode 0, no modifiers, characters = "a", charactersIgnoring = "a")
+  (mac-ime-mock-simulate-event 0 0 "a" "a")
+  
+  ;; Poll
+  (mac-ime-poll)
+  
+  ;; Check if IME was NOT deactivated (input source remains RomajiTyping)
+  (should (equal (mac-ime-internal-get-input-source) "com.apple.inputmethod.Kotoeri.RomajiTyping")))
 
 (ert-deftest mac-ime-focus-change-test ()
   "Test focus change handling."
@@ -219,25 +260,21 @@
   ;; Setup: IME is ON
   (mac-ime-internal-set-input-source "com.apple.inputmethod.Kotoeri.RomajiTyping")
   (setq current-input-method mac-ime-input-method)
+  (setq mac-ime-last-off-input-source "com.apple.keylayout.US")
   
-  ;; Configure prefix key: C-j
-  (defconst mac-ime-kVK_ANSI_J 38)
-  (let ((mac-ime-prefix-keys `((,mac-ime-kVK_ANSI_J . ,mac-ime-NSEventModifierFlagControl)))
-        (mac-ime-ime-off-input-source "com.apple.keylayout.US"))
-    
-    (add-hook 'mac-ime-functions #'mac-ime-deactivate-ime-on-prefix)
-    
-    ;; Set Converting to TRUE
-    (setq mac-ime-mock-converting t)
+  (add-hook 'mac-ime-functions #'mac-ime-deactivate-ime-on-prefix)
+  
+  ;; Set Converting to TRUE
+  (setq mac-ime-mock-converting t)
 
-    ;; Simulate C-j
-    (mac-ime-mock-simulate-event mac-ime-kVK_ANSI_J mac-ime-NSEventModifierFlagControl)
-    
-    ;; Poll
-    (mac-ime-poll)
-    
-    ;; Check if IME was NOT deactivated (input source remains RomajiTyping)
-    (should (equal (mac-ime-internal-get-input-source) "com.apple.inputmethod.Kotoeri.RomajiTyping"))))
+  ;; Simulate C-x (Control flag, characters = "\x18", charactersIgnoring = "x")
+  (mac-ime-mock-simulate-event 7 mac-ime-NSEventModifierFlagControl "\x18" "x")
+  
+  ;; Poll
+  (mac-ime-poll)
+  
+  ;; Check if IME was NOT deactivated (input source remains RomajiTyping)
+  (should (equal (mac-ime-internal-get-input-source) "com.apple.inputmethod.Kotoeri.RomajiTyping")))
 
 (ert-deftest mac-ime-get-ime-on-input-source-priority-test ()
   "Test prioritized IME-on input source selection."
@@ -284,7 +321,7 @@
   (setq mac-ime--last-selected-buffer (current-buffer))
   
   (let ((hook-called nil))
-    (add-hook 'mac-ime-functions (lambda (k m c) (setq hook-called t)))
+    (add-hook 'mac-ime-functions (lambda (k m c ci cv) (setq hook-called t)))
     
     ;; Set up initial input source (US)
     (mac-ime-internal-set-input-source "com.apple.keylayout.US")
@@ -303,5 +340,110 @@
     
     ;; Verify that synchronization was triggered and the cached current input source is updated
     (should (equal mac-ime--current-input-source "com.apple.inputmethod.Kotoeri.RomajiTyping"))))
+
+(ert-deftest mac-ime-already-loaded-version-check-test ()
+  "Test version checking when module is already loaded."
+  (mac-ime-test-reset)
+  ;; Ensure mock module is "loaded"
+  (mac-ime-mock-enable)
+  ;; Temporarily remove the mock override advice on mac-ime--load-module so we can test it
+  (advice-remove 'mac-ime--load-module #'ignore)
+  (should (featurep 'mac-ime-module))
+  
+  (unwind-protect
+      (progn
+        ;; 1. If required-version matches exactly (0.1.0), it should pass
+        (let ((mac-ime-required-module-version "0.1.0"))
+          (mac-ime--load-module))
+        
+        ;; 2. If required-version does not match (newer: 0.2.0), it should raise an error
+        (let ((mac-ime-required-module-version "0.2.0"))
+          (should-error (mac-ime--load-module) :type 'error))
+
+        ;; 3. If required-version does not match (older: 0.0.9), it should raise an error
+        (let ((mac-ime-required-module-version "0.0.9"))
+          (should-error (mac-ime--load-module) :type 'error)))
+    ;; Clean up: restore the mock advice to not break other mock tests
+    (advice-add 'mac-ime--load-module :override #'ignore)))
+
+(ert-deftest mac-ime-download-and-load-test ()
+  "Test downloading dynamic module when version mismatch is simulated."
+  (mac-ime-test-reset)
+  (let ((mac-ime-download-called nil)
+        (path "/tmp/fake-mac-ime-module.so"))
+    (cl-letf (((symbol-function 'mac-ime-download-module)
+               (lambda (&optional _tag) (setq mac-ime-download-called t)))
+              ((symbol-function 'file-exists-p)
+               (lambda (p) (if (string= p path) nil t)))
+              ((symbol-function 'y-or-n-p)
+               (lambda (_prompt) t))
+              (noninteractive nil)) ; Simulate interactive session
+      (should-error (mac-ime--check-module-loadable path) :type 'error)
+      (should mac-ime-download-called))))
+
+(ert-deftest mac-ime-download-module-version-check-test ()
+  "Test that `mac-ime-download-module` validates the downloaded module version."
+  (mac-ime-test-reset)
+  (let* ((temp-dir (make-temp-file "mac-ime-test-" t))
+         (mac-ime-module-path (expand-file-name "mac-ime-module.so" temp-dir))
+         (mac-ime-required-module-version "0.1.0")
+         (curl-exit-code 0)
+         (simulated-content "")
+         (orig-call-process (symbol-function 'call-process)))
+    (unwind-protect
+        (cl-letf (((symbol-function 'call-process)
+                   (lambda (program infile destination display &rest args)
+                     (cond
+                      ((string= program "curl")
+                       (let* ((o-idx (cl-position "-o" args :test #'string=))
+                              (temp-path (when o-idx (nth (1+ o-idx) args))))
+                         (if (= curl-exit-code 0)
+                             (when (and temp-path (> (length simulated-content) 0))
+                               (with-temp-file temp-path
+                                 (insert simulated-content)))
+                           (insert "curl: (56) The requested URL returned error: 404"))
+                         curl-exit-code))
+                      ((string= program "xattr")
+                       0)
+                      (t
+                       (apply orig-call-process program infile destination display args)))))
+                  ((symbol-function 'executable-find)
+                   (lambda (cmd) (member cmd '("curl" "xattr")))))
+          
+          ;; Case 1: Valid version downloaded
+          (setq curl-exit-code 0
+                simulated-content "some binary content mac-ime-module-version:0.1.0 dummy")
+          (should (mac-ime-download-module "v0.1.0"))
+          (should (file-exists-p mac-ime-module-path))
+          
+          ;; Clean up file for next cases
+          (delete-file mac-ime-module-path)
+          
+          ;; Case 2: Incompatible (older) version downloaded
+          (setq curl-exit-code 0
+                simulated-content "some binary content mac-ime-module-version:0.0.9 dummy")
+          (should-error (mac-ime-download-module "v0.0.9") :type 'error)
+          (should-not (file-exists-p mac-ime-module-path))
+          
+          ;; Case 2b: Incompatible (newer) version downloaded
+          (setq curl-exit-code 0
+                simulated-content "some binary content mac-ime-module-version:0.1.1 dummy")
+          (should-error (mac-ime-download-module "v0.1.1") :type 'error)
+          (should-not (file-exists-p mac-ime-module-path))
+          
+          ;; Case 3: Missing version signature
+          (setq curl-exit-code 0
+                simulated-content "some binary content without version signature")
+          (should-error (mac-ime-download-module "v0.1.0") :type 'error)
+          (should-not (file-exists-p mac-ime-module-path))
+          
+          ;; Case 4: Curl exit code failure
+          (setq curl-exit-code 1
+                simulated-content "")
+          (should-error (mac-ime-download-module "v0.1.0") :type 'error)
+          (should-not (file-exists-p mac-ime-module-path)))
+      
+      ;; Delete the temp directory
+      (delete-directory temp-dir t))))
 
 (provide 'mac-ime-mock-test)

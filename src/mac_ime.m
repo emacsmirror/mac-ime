@@ -3,6 +3,9 @@
 #include "emacs-module.h"
 #include <pthread.h>
 
+#define MAC_IME_MODULE_VERSION "0.1.0"
+__attribute__((used)) static const char *mac_ime_module_version_string = "mac-ime-module-version:" MAC_IME_MODULE_VERSION;
+
 int plugin_is_GPL_compatible;
 
 // Global variables to manage state
@@ -20,17 +23,23 @@ BOOL is_converting_helper() {
 }
 
 // --- Helper: Add event to queue ---
-void enqueue_event_data(long keyCode, unsigned long modifierFlags, BOOL converting) {
+void enqueue_event_data(long keyCode, unsigned long modifierFlags, NSString *chars, NSString *charsIgnoring, BOOL converting) {
     pthread_mutex_lock(&queueMutex);
     if (!eventQueue) {
         eventQueue = [[NSMutableArray alloc] init];
     }
     
-    NSDictionary *eventData = @{
+    NSMutableDictionary *eventData = [NSMutableDictionary dictionaryWithDictionary:@{
         @"keyCode": @(keyCode),
         @"modifiers": @(modifierFlags),
         @"converting": @(converting)
-    };
+    }];
+    if (chars) {
+        eventData[@"characters"] = chars;
+    }
+    if (charsIgnoring) {
+        eventData[@"charactersIgnoring"] = charsIgnoring;
+    }
     [eventQueue addObject:eventData];
     pthread_mutex_unlock(&queueMutex);
 }
@@ -45,12 +54,12 @@ static emacs_value Fmac_ime_start(emacs_env *env, ptrdiff_t nargs, emacs_value a
 
     // Add Notification Observer for input source change
     notificationObserver = [[NSNotificationCenter defaultCenter] addObserverForName:NSTextInputContextKeyboardSelectionDidChangeNotification
-                                                      object:nil
-                                                       queue:[NSOperationQueue mainQueue]
-                                                  usingBlock:^(NSNotification * _Nonnull note) {
+                                                       object:nil
+                                                        queue:[NSOperationQueue mainQueue]
+                                                   usingBlock:^(NSNotification * _Nonnull note) {
         // Enqueue a dummy event (keycode = -1) when the input source changes, but only if Emacs is active.
         if ([NSApp isActive]) {
-            enqueue_event_data(-1, 0, NO);
+            enqueue_event_data(-1, 0, nil, nil, NO);
         }
     }];
 
@@ -65,9 +74,15 @@ static emacs_value Fmac_ime_start(emacs_env *env, ptrdiff_t nargs, emacs_value a
         long keyCode = [event keyCode];
         unsigned long flags = [event modifierFlags];
         BOOL converting = is_converting_helper();
+        NSString *chars = nil;
+        NSString *charsIgnoring = nil;
+        if ([event type] == NSEventTypeKeyDown) {
+            chars = [event characters];
+            charsIgnoring = [event charactersIgnoringModifiers];
+        }
         
         // 2. Enqueue for Lisp to pick up later
-        enqueue_event_data(keyCode, flags, converting);
+        enqueue_event_data(keyCode, flags, chars, charsIgnoring, converting);
         
         // 3. Return event (return nil to consume/block it, return event to pass it on)
         return event; 
@@ -111,15 +126,19 @@ static emacs_value Fmac_ime_poll(emacs_env *env, ptrdiff_t nargs, emacs_value ar
         long keyCode = [evt[@"keyCode"] longValue];
         unsigned long mods = [evt[@"modifiers"] unsignedLongValue];
         BOOL converting = [evt[@"converting"] boolValue];
+        NSString *chars = evt[@"characters"];
+        NSString *charsIgnoring = evt[@"charactersIgnoring"];
 
         // Convert C values to Lisp values
         emacs_value lisp_keycode = env->make_integer(env, keyCode);
         emacs_value lisp_mods = env->make_integer(env, mods);
+        emacs_value lisp_chars = chars ? env->make_string(env, [chars UTF8String], [chars lengthOfBytesUsingEncoding:NSUTF8StringEncoding]) : env->intern(env, "nil");
+        emacs_value lisp_chars_ignoring = charsIgnoring ? env->make_string(env, [charsIgnoring UTF8String], [charsIgnoring lengthOfBytesUsingEncoding:NSUTF8StringEncoding]) : env->intern(env, "nil");
         emacs_value lisp_converting = converting ? env->intern(env, "t") : env->intern(env, "nil");
 
-        // Call the Lisp hook: (funcall hook-func keycode modifiers converting-p)
-        emacs_value func_args[] = { hook_func, lisp_keycode, lisp_mods, lisp_converting };
-        env->funcall(env, env->intern(env, "funcall"), 4, func_args);
+        // Call the Lisp hook: (funcall hook-func keycode modifiers characters characters-ignoring converting-p)
+        emacs_value func_args[] = { hook_func, lisp_keycode, lisp_mods, lisp_chars, lisp_chars_ignoring, lisp_converting };
+        env->funcall(env, env->intern(env, "funcall"), 6, func_args);
     }
 
     return env->make_integer(env, [currentEvents count]);
@@ -183,6 +202,11 @@ static emacs_value Fmac_ime_set_input_source(emacs_env *env, ptrdiff_t nargs, em
     return (status == noErr) ? env->intern(env, "t") : env->intern(env, "nil");
 }
 
+// --- Module Function: Version ---
+static emacs_value Fmac_ime_version(emacs_env *env, ptrdiff_t nargs, emacs_value args[], void *data) {
+    return env->make_string(env, mac_ime_module_version_string + 23, sizeof(MAC_IME_MODULE_VERSION) - 1);
+}
+
 // --- Module Function: Get Input Source List ---
 static emacs_value Fmac_ime_get_input_source_list(emacs_env *env, ptrdiff_t nargs, emacs_value args[], void *data) {
     // Filter for selectable input sources (visible in the menu)
@@ -219,6 +243,12 @@ int emacs_module_init(struct emacs_runtime *ert) {
 
     // Define fset helper
     emacs_value fset = env->intern(env, "fset");
+
+    // Register `mac-ime-internal-version`
+    emacs_value func_version = env->make_function(env, 0, 0, Fmac_ime_version, "Get the module version.", NULL);
+    emacs_value sym_version = env->intern(env, "mac-ime-internal-version");
+    emacs_value args_version[] = { sym_version, func_version };
+    env->funcall(env, fset, 2, args_version);
     
     // Register `mac-ime-internal-get-input-source-list`
     emacs_value func_get_list = env->make_function(env, 0, 0, Fmac_ime_get_input_source_list, "Get a list of all selectable input source IDs.", NULL);

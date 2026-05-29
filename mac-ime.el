@@ -707,7 +707,8 @@ Resets sync state and synchronizes input method."
 
 (defun mac-ime--sync-input-method ()
   "Synchronize `current-input-method` with the macOS input source."
-  (unless mac-ime--saved-input-source
+  (unless (or mac-ime--saved-input-source
+              mac-ime--ignore-input-source-change)
     (let ((current-source (mac-ime-get-input-source)))
       (when current-source
         (if mac-ime--sync-paused

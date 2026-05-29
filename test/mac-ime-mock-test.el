@@ -253,6 +253,43 @@
   
   (should (equal current-input-method nil)))
 
+(ert-deftest mac-ime-sync-state-during-auto-deactivate-test ()
+  "Test that input method synchronization is skipped during auto-deactivation."
+  (mac-ime-test-reset)
+  ;; Setup: IME is ON
+  (mac-ime-internal-set-input-source "com.apple.inputmethod.Kotoeri.RomajiTyping")
+  (setq current-input-method mac-ime-input-method)
+  (setq mac-ime-last-off-input-source "com.apple.keylayout.US")
+
+  (let ((inner-sync-checked nil)
+        (inner-input-method nil))
+    ;; Define a mock function that triggers sync while inside the auto-deactivated block
+    (defalias 'mac-ime-test-sync-deactivate-func
+      (lambda ()
+        ;; Trigger sync to simulate poll running during read-event
+        (mac-ime--sync-input-method)
+        (setq inner-sync-checked t
+              inner-input-method current-input-method)))
+
+    ;; Run the auto-deactivate wrapper
+    (mac-ime--auto-deactivate-body
+     'mac-ime-test-sync-deactivate-func
+     nil
+     'mac-ime-test-sync-deactivate-func)
+
+    ;; 1. Verify that sync inside the auto-deactivate block did not deactivate current-input-method
+    (should inner-sync-checked)
+    (should (equal inner-input-method mac-ime-input-method))
+
+    ;; 2. Verify that the current-input-method is still active after the function completes
+    (should (equal current-input-method mac-ime-input-method))
+
+    ;; 3. Verify that the input source is restored to RomajiTyping
+    (should (equal (mac-ime-internal-get-input-source) "com.apple.inputmethod.Kotoeri.RomajiTyping"))
+
+    ;; Cleanup
+    (fmakunbound 'mac-ime-test-sync-deactivate-func)))
+
 
 (ert-deftest mac-ime-auto-deactivate-on-prefix-converting-test ()
   "Test that IME deactivation on prefix key is skipped when converting."

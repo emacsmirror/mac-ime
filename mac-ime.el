@@ -27,6 +27,14 @@
 (declare-function mac-ime-internal-stop nil ())
 (declare-function mac-ime-internal-version nil ())
 
+(defvar mac-control-modifier)
+(defvar mac-right-control-modifier)
+(defvar mac-command-modifier)
+(defvar mac-right-command-modifier)
+(defvar mac-option-modifier)
+(defvar mac-right-option-modifier)
+(defvar mac-function-modifier)
+
 (defconst mac-ime-version "0.2.0"
   "Version of the mac-ime package.")
 
@@ -114,7 +122,8 @@ If TAG is nil, it defaults to \"v<mac-ime-version>\"."
 
 (defcustom mac-ime-functions nil
   "List of functions to call when a key event occurs.
-Each function is called with five arguments: (KEYCODE MODIFIERS CHARACTERS CHARACTERS-IGNORING CONVERTING-P)."
+Each function is called with five arguments:
+(KEYCODE MODIFIERS CHARACTERS CHARACTERS-IGNORING CONVERTING-P)."
   :type 'hook
   :group 'mac-ime)
 
@@ -153,7 +162,7 @@ Each function is called with five arguments: (KEYCODE MODIFIERS CHARACTERS CHARA
                (t nil)))))
       val)))
 
-(defun mac-ime--event-from-cocoa (modifiers chars chars-ignoring)
+(defun mac-ime--event-from-cocoa (modifiers _chars chars-ignoring)
   "Convert Cocoa MODIFIERS, CHARS, and CHARS-IGNORING to an Emacs event."
   (when (and chars-ignoring (> (length chars-ignoring) 0))
     (let* ((char-code (aref chars-ignoring 0))
@@ -399,7 +408,7 @@ The original input source is restored in `pre-command-hook`."
         ;; mac-ime-poll has a depth of -100, so we use 100 here to ensure this runs later.
         (add-hook 'pre-command-hook #'mac-ime--restore-input-source 100)))))
 
-(defun mac-ime-deactivate-ime-on-prefix (keycode modifiers characters characters-ignoring converting-p)
+(defun mac-ime-deactivate-ime-on-prefix (_keycode modifiers characters characters-ignoring converting-p)
   "Deactivate IME when a prefix key in the current keymap is pressed.
 This function is intended to be added to `mac-ime-functions`.
 KEYCODE is the virtual key code.
@@ -674,8 +683,8 @@ The IME state is restored after FUNC completes."
   "The expected input source ID when synchronization is paused.")
 
 (defun mac-ime--update-title (input-source)
-  "Update `current-input-method-title`.
-based on INPUT-SOURCE and `mac-ime-title-rules`."
+  "Update `current-input-method-title' based on INPUT-SOURCE.
+The rules to determine the title are specified by `mac-ime-title-rules'."
   (let ((title (cl-loop for (regexp . t-str) in mac-ime-title-rules
                         if (or (eq regexp t)
                                (and (stringp regexp)
@@ -755,8 +764,14 @@ This function disables hooks, timers, and advices via
 (when (featurep 'mac-ime-module)
   (let ((loaded-ver (mac-ime-internal-version)))
     (unless (string= mac-ime-required-module-version loaded-ver)
-      (mac-ime--report-error (format "Loaded module version `%s' does not match required `%s'. Please restart Emacs."
-                                     loaded-ver mac-ime-required-module-version)))))
+      ;; Use a timer to delay the warning display until the load process completes,
+      ;; ensuring the warning buffer is popped up (split window) properly.
+      (run-with-timer 0.1 nil
+                      (lambda ()
+                        (display-warning 'mac-ime
+                                         (format "Loaded module version `%s' does not match required `%s'.\n\nPlease restart Emacs to complete the update."
+                                                 loaded-ver mac-ime-required-module-version)
+                                         :error))))))
 
 (provide 'mac-ime)
 ;;; mac-ime.el ends here

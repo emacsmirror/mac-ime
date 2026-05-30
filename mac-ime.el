@@ -2,6 +2,7 @@
 
 ;; Copyright (C) 2025 Masami
 ;; Author: Masami Iwata
+;; Assisted-by: Gemini:3.1pro
 ;; Version: 0.2.0
 ;; Keywords: mac, input, ime
 ;; Package-Requires: ((emacs "27.1"))

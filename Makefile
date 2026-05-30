@@ -5,7 +5,7 @@ LDFLAGS = -dynamiclib -framework Cocoa -framework Carbon
 ARCH_FLAGS = -arch x86_64 -arch arm64
 
 # Include path for emacs-module.h
-CFLAGS += -I./src -I./src/emacs-27.1
+CFLAGS += -I./src
 
 SRC = src/mac_ime.m
 OBJ = mac-ime-module.so

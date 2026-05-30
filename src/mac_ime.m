@@ -1,6 +1,6 @@
 #include <Cocoa/Cocoa.h>
 #include <Carbon/Carbon.h>
-#include "emacs-module.h"
+#include "emacs-27.1/emacs-module.h"
 #include <pthread.h>
 
 #define MAC_IME_MODULE_VERSION "0.1.0"

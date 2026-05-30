@@ -18,7 +18,7 @@ $(OBJ): $(SRC)
 clean:
 	rm -f $(OBJ)
 
-test: $(OBJ)
+test: $(OBJ) compile lint
 	@$(MAKE) check-module-policy
 	@echo "Running Mock Tests..."
 	emacs -Q -batch -L . -L test -l test/mac-ime-mock-test.el -f ert-run-tests-batch-and-exit
@@ -34,4 +34,17 @@ check-module-policy: $(OBJ)
 		exit 1; \
 	fi
 
-.PHONY: all clean test check-module-policy
+compile:
+	@echo "Byte-compiling mac-ime.el..."
+	@emacs -Q -batch --eval "(setq byte-compile-error-on-warn t)" -f batch-byte-compile mac-ime.el
+	@rm -f mac-ime.elc
+
+lint:
+	@echo "Running checkdoc..."
+	@emacs -Q -batch --eval "(progn (checkdoc-file \"mac-ime.el\") (when (get-buffer \"*Warnings*\") (message \"checkdoc failed:\") (princ (with-current-buffer \"*Warnings*\" (buffer-string))) (kill-emacs 1)))"
+	@echo "Running package-lint..."
+	@emacs -batch --eval "(progn (require 'package) (add-to-list 'package-archives '(\"melpa\" . \"https://melpa.org/packages/\") t) (package-initialize) (unless (package-installed-p 'package-lint) (package-refresh-contents) (package-install 'package-lint)))" -l package-lint -f package-lint-batch-and-exit mac-ime.el
+
+.PHONY: all clean test check-module-policy compile lint
+
+

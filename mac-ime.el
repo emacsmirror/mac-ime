@@ -1,10 +1,10 @@
-;;; mac-ime.el --- NSEvent hook for Emacs -*- lexical-binding: t; -*-
+;;; mac-ime.el --- NSEvent hook for macOS input method -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2025 Masami
 ;; Author: Masami Iwata
 ;; Assisted-by: Gemini:3.1pro
 ;; Version: 0.2.0
-;; Keywords: mac, input, ime
+;; Keywords: i18n, convenience
 ;; Package-Requires: ((emacs "27.1"))
 ;; URL: https://github.com/ma0001/mac-ime
 
@@ -87,7 +87,7 @@ If TAG is nil, it defaults to \"v<mac-ime-version>\"."
          (dest-path mac-ime-module-path)
          (temp-path (concat dest-path ".tmp")))
     (unless (executable-find "curl")
-      (mac-ime--report-error "mac-ime: `curl` command not found. Please install curl or download the module manually"))
+      (mac-ime--report-error "mac-ime: `curl` command not found.  Please install curl or download the module manually"))
     (message "mac-ime: Downloading mac-ime-module.so (%s) from GitHub..." tag)
     (with-temp-buffer
       (let ((exit-code (call-process "curl" nil '(t t) nil "-s" "-S" "-L" "-f" "-o" temp-path url)))
@@ -124,7 +124,7 @@ If TAG is nil, it defaults to \"v<mac-ime-version>\"."
 (defcustom mac-ime-functions nil
   "List of functions to call when a key event occurs.
 Each function is called with five arguments:
-(KEYCODE MODIFIERS CHARACTERS CHARACTERS-IGNORING CONVERTING-P)."
+\(KEYCODE MODIFIERS CHARACTERS CHARACTERS-IGNORING CONVERTING-P)."
   :type 'hook
   :group 'mac-ime)
 
@@ -284,7 +284,7 @@ Each element can be a function symbol or a cons cell (FUNCTION . ARG-INDEX).
 If it is a cons cell, ARG-INDEX specifies the position of the
 INHERIT-INPUT-METHOD argument.
 If the current input method is `mac-ime-input-method` and the argument is nil
-(or not specified), IME is deactivated.  Otherwise, the IME state is not
+\(or not specified), IME is deactivated.  Otherwise, the IME state is not
 changed."
   :type '(repeat (choice function (cons function integer)))
   :group 'mac-ime)
@@ -438,6 +438,7 @@ CONVERTING-P is non-nil if IME is currently converting."
 
 (defun mac-ime--check-module-loadable (path &optional no-retry)
   "Check if the module at PATH is loadable.
+If NO-RETRY is non-nil, do not attempt to download the module.
 Raises an error if the module does not exist, is not readable,
 is quarantined, or has an incompatible version."
   (let ((should-download nil)
@@ -482,12 +483,12 @@ is quarantined, or has an incompatible version."
       (let ((loaded-ver (mac-ime-internal-version)))
         (unless (string= mac-ime-required-module-version loaded-ver)
           (if (and (not noninteractive)
-                   (y-or-n-p (format "mac-ime: Loaded module version `%s' does not match required `%s'. Download updated module from GitHub?"
+                   (y-or-n-p (format "mac-ime: Loaded module version `%s' does not match required `%s'.  Download updated module from GitHub?"
                                      loaded-ver mac-ime-required-module-version)))
               (progn
                 (mac-ime-download-module)
-                (mac-ime--report-error "mac-ime: Downloaded updated module. Please restart Emacs to load the new module version"))
-            (mac-ime--report-error (format "mac-ime: Loaded module version `%s' does not match required `%s'. Please restart Emacs"
+                (mac-ime--report-error "mac-ime: Downloaded updated module.  Please restart Emacs to load the new module version"))
+            (mac-ime--report-error (format "mac-ime: Loaded module version `%s' does not match required `%s'.  Please restart Emacs"
                                            loaded-ver mac-ime-required-module-version)))))
     ;; Not loaded: verify and load
     (mac-ime--check-module-loadable mac-ime-module-path)

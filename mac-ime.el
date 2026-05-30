@@ -3,7 +3,7 @@
 ;; Copyright (C) 2025 Masami
 ;; Author: Masami Iwata
 ;; Assisted-by: Gemini:3.1pro
-;; Version: 0.2.0
+;; Version: 0.2.1
 ;; Keywords: i18n, convenience
 ;; Package-Requires: ((emacs "27.1"))
 ;; URL: https://github.com/ma0001/mac-ime
@@ -36,7 +36,7 @@
 (defvar mac-right-option-modifier)
 (defvar mac-function-modifier)
 
-(defconst mac-ime-version "0.2.0"
+(defconst mac-ime-version "0.2.1"
   "Version of the mac-ime package.")
 
 (defconst mac-ime-required-module-version "0.1.0"

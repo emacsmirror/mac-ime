@@ -1,6 +1,9 @@
-# mac-ime
+
+[![MELPA](https://melpa.org/packages/mac-ime-badge.svg)](https://melpa.org/#/mac-ime)
 
 [English](./ReadMe.en.md)
+
+# mac-ime
 
 IMEパッチの入っていないEmacsでIMEを快適に使うための拡張機能です。
 macOSのキー入力イベントをフックして、プリフィックスキーが押されたり、ミニバッファの入力時などに自動的にIMEをOFFにしコマンド実行後に復帰します。
@@ -15,75 +18,42 @@ Emacsのダイナミックモジュール機能を利用してOSのIMEを制御�
 ## 必要要件
 
 - macOS
+  - **GUI版のEmacsでのみ動作します**。内部で `NSEvent` を監視してキー入力をフックする仕組みのため、ターミナルモード（`emacs -nw`）では動作しません。
 - Emacs 27.1 以上 (ダイナミックモジュールサポートが有効であること)
 - Clang (ビルド用)
 
 ## インストール
 
-`mac-ime` はダイナミックモジュール (`mac-ime-module.so`) を使用します。
+`mac-ime` は MELPA に登録されています。MELPA の設定が完了している場合は、以下のコマンドでインストールできます。
 
-リポジトリ内にファットバイナリーで作成したモジュールを登録しているため、リポジトリのクローンをすればビルドは不要です。
-また、モジュールファイルが存在しない場合やバージョンが古い場合であっても、`mac-ime-enable`実行時に GitHub Releases から適切なモジュールを `curl` を使って自動的にダウンロード・配置します。
-
-手動でモジュールをダウンロード・更新したい場合は、`M-x mac-ime-download-module` を実行してください。
-
-Emacs 29以降では `use-package` の `:vc` キーワードを使用してインストールできます。
-
-### リポジトリをクローンする場合
-
-1. リポジトリをクローンします。
-
-```bash
-git clone https://github.com/ma0001/mac-ime.git
+```
+M-x package-install RET mac-ime RET
 ```
 
-2. `init.el` などに以下の設定を追加してください。
-
-基本設定は以下だけです
-
-```elisp
-;; ロードパスの追加 (リポジトリのパスに合わせて変更してください)
-(add-to-list 'load-path "/path/to/mac-ime")
-(require 'mac-ime)
-;; input methodgを"mac-ime"に設定
-(setq default-input-method "mac-ime")
-;; モジュールの有効化 (イベント監視の開始)
-(mac-ime-enable)
-```
-
-3. アップデート
-
-アップデートする場合は、リポジトリをpullしてください
-
-```bash
-cd /path/to/mac-ime
-git pull
-```
-
-### use-package :vc を使用する場合 (Emacs 29以降)
-
-Emacs 29以降では `use-package` の `:vc` キーワードを使用してインストールできます。
-`init.el` などに以下の設定を追加してください。
+`use-package` を使用する場合は、以下のように設定してください。
 
 ```elisp
 (use-package mac-ime
-  :vc (:url "https://github.com/ma0001/mac-ime")
+  :ensure t
   :config
   ;; input methodを"mac-ime"に設定
   (setq default-input-method "mac-ime")
-  ;; モジュールの有効化
+  ;; モジュールの有効化 (イベント監視の開始)
   (mac-ime-enable))
 ```
 
-アップデート方法は　`M-x package-vc-upgrade`　または　`M-x package-upgrade-all`　でできます。
-（list-packagesでは'U'表示されない）
+### ダイナミックモジュールのダウンロードについて
+
+`mac-ime` はダイナミックモジュール (`mac-ime-module.so`) を使用します。
+
+パッケージインストール時や、モジュールファイルが存在しない場合、あるいはバージョンが古い場合は、`mac-ime-enable` 実行時に GitHub Releases から適切なビルド済みモジュールを `curl` を使って自動的にダウンロード・配置します。
+
+手動でモジュールをダウンロード・更新したい場合は、`M-x mac-ime-download-module` を実行してください。
 
 > [!IMPORTANT]
-> `mac-ime` はダイナミックモジュール (`.so`) を使用しています。  `package-upgrade-all`
-> でファイル更新はできますが、`module-load` 済みのモジュール本体は同じ Emacs
-> プロセス内で完全に差し替えできません。  アップデート後は Emacs を再起動してください。
-> `mac-ime-unload-function` はタイマー・フック・advice の後始末を行いますが、
-> モジュール本体のアンロードではありません。
+> `mac-ime` はダイナミックモジュール (`.so`) を使用しています。
+> `package-upgrade` や `package-upgrade-all` でパッケージの更新はできますが、`module-load` 済みのモジュール本体は同じ Emacs プロセス内で完全に差し替えできません。アップデート後は Emacs を再起動してください。
+> `mac-ime-unload-function` はタイマー・フック・advice の後始末を行いますが、モジュール本体のアンロードではありません。
 
 ## トラブルシューティング
 

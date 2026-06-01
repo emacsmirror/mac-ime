@@ -15,68 +15,40 @@ Since it controls the system IME using Emacs' dynamic module feature, you can in
 ## Requirements
 
 - macOS
+  - **Works only on GUI Emacs**. Since it uses `NSEvent` to monitor and hook key inputs, it does not work in terminal mode (`emacs -nw`).
 - Emacs 27.1 or higher (with dynamic module support enabled)
 - Clang (for building)
 
 ## Installation
 
-`mac-ime` uses a dynamic module (`mac-ime-module.so`).
+`mac-ime` is available on MELPA. If you have MELPA configured, you can install it by running:
 
-Since a pre-built fat binary of the module is included in the repository, you do not need to build it yourself if you clone the repository.
-Furthermore, even if the module file is missing or outdated, `mac-ime` will automatically download and place the appropriate module from GitHub Releases using `curl` when `mac-ime-enable` is executed.
-
-If you wish to download/update the module manually, run `M-x mac-ime-download-module`.
-
-On Emacs 29 or later, you can install it using the `:vc` keyword of `use-package`.
-
-### Cloning the Repository
-
-1. Clone the repository:
-
-```bash
-git clone https://github.com/ma0001/mac-ime.git
+```
+M-x package-install RET mac-ime RET
 ```
 
-2. Add the following configuration to your `init.el` or equivalent:
-
-```elisp
-;; Add to load-path (adjust the path to match your local setup)
-(add-to-list 'load-path "/path/to/mac-ime")
-(require 'mac-ime)
-;; Set the default input method to "mac-ime"
-(setq default-input-method "mac-ime")
-;; Enable the module (starts event monitoring)
-(mac-ime-enable)
-```
-
-3. Updating:
-
-To update, pull the latest changes from the repository:
-
-```bash
-cd /path/to/mac-ime
-git pull
-```
-
-### Using use-package :vc (Emacs 29+)
-
-On Emacs 29 and later, you can install the package using the `:vc` keyword. Add the following to your `init.el` or equivalent:
+If you use `use-package`, add the following to your configuration:
 
 ```elisp
 (use-package mac-ime
-  :vc (:url "https://github.com/ma0001/mac-ime")
+  :ensure t
   :config
   ;; Set the default input method to "mac-ime"
   (setq default-input-method "mac-ime")
-  ;; Enable the module
+  ;; Enable the module (starts event monitoring)
   (mac-ime-enable))
 ```
 
-To update, use `M-x package-vc-upgrade` or `M-x package-upgrade-all`.
-(Note: It will not show up with a 'U' indicator in `list-packages`.)
+### Dynamic Module Download
+
+`mac-ime` uses a dynamic module (`mac-ime-module.so`).
+
+When the package is installed, or if the module file is missing or outdated, `mac-ime` will automatically download and place the appropriate pre-built module from GitHub Releases using `curl` when `mac-ime-enable` is executed.
+
+If you wish to download/update the module manually, run `M-x mac-ime-download-module`.
 
 > [!IMPORTANT]
-> `mac-ime` relies on a dynamic module (`.so`). Although you can update files via `package-upgrade-all`, the already loaded module (`module-load`) cannot be completely replaced in-place within the same Emacs process. Please restart Emacs after upgrading.
+> `mac-ime` relies on a dynamic module (`.so`). Although you can update files via `package-upgrade` or `package-upgrade-all`, the already loaded module (`module-load`) cannot be completely replaced in-place within the same Emacs process. Please restart Emacs after upgrading.
 > While `mac-ime-unload-function` cleans up timers, hooks, and advices, it does not unload the dynamic module itself from the running process.
 
 ## Troubleshooting

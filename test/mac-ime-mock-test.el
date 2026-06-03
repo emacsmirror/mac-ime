@@ -186,6 +186,8 @@
     (should (member #'mac-ime-poll pre-command-hook))
     (should (member #'mac-ime-update-state
                     window-selection-change-functions))
+    (should (member #'mac-ime-update-state
+                    window-buffer-change-functions))
     (should (advice-member-p #'mac-ime--temporary-deactivate-advice
                              'universal-argument--mode))
     (should (advice-member-p read-string-advice 'read-string))
@@ -196,6 +198,8 @@
     (should-not (member #'mac-ime-poll pre-command-hook))
     (should-not (member #'mac-ime-update-state
                         window-selection-change-functions))
+    (should-not (member #'mac-ime-update-state
+                        window-buffer-change-functions))
     (should-not (advice-member-p #'mac-ime--temporary-deactivate-advice
                                  'universal-argument--mode))
     (should-not (advice-member-p read-string-advice 'read-string))))
@@ -483,4 +487,33 @@
       ;; Delete the temp directory
       (delete-directory temp-dir t))))
 
+(ert-deftest mac-ime-buffer-switch-in-same-window-test ()
+  "Test that switching buffers in the same window updates IME state appropriately."
+  (mac-ime-test-reset)
+  (mac-ime-enable)
+  (let ((buf-a (generate-new-buffer "buf-a"))
+        (buf-b (generate-new-buffer "buf-b")))
+    (unwind-protect
+        (with-selected-window (selected-window)
+          ;; 1. Switch to buf-a and activate input method
+          (switch-to-buffer buf-a)
+          (activate-input-method mac-ime-input-method)
+          (should (equal current-input-method mac-ime-input-method))
+          (should (equal (mac-ime-internal-get-input-source) "com.apple.inputmethod.Kotoeri.RomajiTyping"))
+
+          ;; 2. Switch to buf-b where input method is NOT active
+          (switch-to-buffer buf-b)
+          (should-not current-input-method)
+          
+          ;; In batch mode, we manually run the window buffer change functions
+          (run-hook-with-args 'window-buffer-change-functions (selected-window))
+
+          ;; Without the fix, the IME will still be Kotoeri.RomajiTyping (ON)
+          ;; With the fix, it should change to US (OFF)
+          (should (equal (mac-ime-internal-get-input-source) "com.apple.keylayout.US")))
+      (kill-buffer buf-a)
+      (kill-buffer buf-b)
+      (mac-ime-disable))))
+
 (provide 'mac-ime-mock-test)
+

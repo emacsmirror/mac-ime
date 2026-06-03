@@ -617,6 +617,7 @@ Otherwise, deactivate IME."
       (dolist (func mac-ime-temporary-deactivate-functions)
         (mac-ime-temporary-deactivate func))
       (add-hook 'window-selection-change-functions #'mac-ime-update-state)
+      (add-hook 'window-buffer-change-functions #'mac-ime-update-state)
       (add-function :after after-focus-change-function #'mac-ime--on-focus)
       (message "mac-ime enabled."))))
 
@@ -640,6 +641,7 @@ Otherwise, deactivate IME."
       (advice-remove func #'mac-ime--temporary-deactivate-advice))
     (remove-function after-focus-change-function #'mac-ime--on-focus)
     (remove-hook 'window-selection-change-functions #'mac-ime-update-state)
+    (remove-hook 'window-buffer-change-functions #'mac-ime-update-state)
     (message "mac-ime disabled.")))
 
 (defun mac-ime-get-input-source ()

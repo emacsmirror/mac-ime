@@ -163,6 +163,16 @@ minibufferで日本語入力すると、minibufferのcurrent-input-methodはmac-
 mac-ime--ignore-input-source-changeが有効な間は、バッファ変更時のIME更新処理をしないようにする
 また、カレントバッファが英語の状態でminibufferに切り替わった時にも日本語に切り替わらないように、すでに英語の状態でも英語に切り替える処理を行いmac-ime--ignore-input-source-changeを有効にする
 
+### アプリケーション切り替え時の動作
+
+他アプリから切り替わった時は`after-focus-change-function`にフックして、システムのIME状態をemacsに反映させる動作を行う。
+システム設定の「書類ごとに入力ソースを自動的に切り替える」設定により、アプリ切り替え時のIME状態はシステム側で決定されるのでそれに従うようにしている。
+
+標準的なMacアプリでは複数の書類でのIMEの切り替え動作もこの設定に従い変化するが、
+emacsでは書類(buffer)ごとのinput methodは別々となるのが既定の動作のため「書類ごとに入力ソースを自動的に切り替える」をオフにしたとしてもbuffer切り替えでIME状態は変化する動作となる。（`window-selection-change-functions` `window-buffer-change-functions` にフックしてIMEをバッファに合わせる動作を行なっている）
+（本モジュールでは対応しないが）この既定動作を変える拡張を行い全てのバッファで同一のIME状態とした場合にその動作を邪魔しないように、
+アプリ切り替え時の動作はシステムのIME状態を反映するようにしている。
+
 
 ## 提供される関数
 

@@ -10,6 +10,16 @@
   (add-to-list 'load-path (file-name-directory (or load-file-name byte-compile-current-file buffer-file-name)))
   (require 'mac-ime-mock))
 
+;; Declare the modifier variables as special so that `let' in tests binds
+;; them dynamically even on Emacs builds without the NS/Mac port, where
+;; they are not defined.
+(defvar mac-control-modifier)
+(defvar mac-right-control-modifier)
+(defvar mac-command-modifier)
+(defvar mac-right-command-modifier)
+(defvar mac-option-modifier)
+(defvar mac-right-option-modifier)
+
 ;; Declare test function to silence complier warning
 (defun mac-ime-test-func () nil)
 

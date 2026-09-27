@@ -45,3 +45,6 @@ fastlane/test_output
 
 *.elc
 .antigravitycli
+
+# direnv
+.envrc

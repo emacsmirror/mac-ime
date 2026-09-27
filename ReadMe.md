@@ -50,6 +50,14 @@ M-x package-install RET mac-ime RET
 
 手動でモジュールをダウンロード・更新したい場合は、`M-x mac-ime-download-module` を実行してください。
 
+モジュールは以下の順に検索され、要求バージョンと一致した最初のものが使用されます。
+
+1. `mac-ime.el` と同じディレクトリの `mac-ime-module.so`（`make` でビルドした場合など）
+2. `mac-ime.el` のシンボリックリンクを解決したディレクトリの `mac-ime-module.so`（straight.el や elpaca を使用している場合はリポジトリ内のモジュールが使われるため、ダウンロードは不要です）
+3. `mac-ime-module-directory`（デフォルトは `user-emacs-directory` 配下の `mac-ime/`）の `mac-ime-module-<モジュールバージョン>.so`
+
+ダウンロードしたモジュールは 3. の場所に保存されます。パッケージディレクトリの外に保存されるため、MELPA でパッケージを更新してもモジュールのバージョンが変わらない限り再ダウンロードは不要です。古いバージョンのモジュールはダウンロード時に削除されます。
+
 > [!IMPORTANT]
 > `mac-ime` はダイナミックモジュール (`.so`) を使用しています。
 > `package-upgrade` や `package-upgrade-all` でパッケージの更新はできますが、`module-load` 済みのモジュール本体は同じ Emacs プロセス内で完全に差し替えできません。アップデート後は Emacs を再起動してください。
@@ -181,7 +189,7 @@ emacsでは書類(buffer)ごとのinput methodは別々となるのが既定の�
 - `(mac-ime-enable)`: イベントモニターを開始し、キーイベントの監視と各種フックを有効にします。
   - 起動時にモジュールの存在とバージョン整合性をチェックし、不足や不整合がある場合は自動ダウンロードを促します。
 - `(mac-ime-disable)`: イベントモニター、タイマー、およびフックを停止・解除します。
-- `(mac-ime-download-module &optional tag)`: 指定したタグ（デフォルトは現在のパッケージバージョンに対応する `v<version>`）のダイナミックモジュールを GitHub からダウンロードして配置します。
+- `(mac-ime-download-module &optional tag)`: 指定したタグ（デフォルトは現在のパッケージバージョンに対応する `v<version>`）のダイナミックモジュールを GitHub からダウンロードし、`mac-ime-module-directory` に保存します。同ディレクトリ内の古いバージョンのモジュールは削除されます。
 
 ### IME操作
 
@@ -203,6 +211,7 @@ emacsでは書類(buffer)ごとのinput methodは別々となるのが既定の�
 - `mac-ime-no-ime-input-source-regexp`: どの入力ソースが「IMEオフ（Roman/英語）」であるかを判定するための正規表現。
 - `mac-ime-ime-on-input-source` / `mac-ime-ime-off-input-source`: IMEをオン/オフする際に使用する入力ソースIDを明示的に指定する場合に使用します（通常は自動判定されます）。
 - `mac-ime-title-rules`: 入力ソースIDに応じてモードラインに表示するインジケータ（`[あ]` など）を決定するルール。
+- `mac-ime-module-directory`: ダウンロードしたダイナミックモジュールの保存先ディレクトリ。デフォルトは `(locate-user-emacs-file "mac-ime/")` です。
 - `mac-ime-debug-level`: デバッグメッセージの出力レベル（0:なし、1:入力キー、2:詳細）。
 - `mac-ime-functions`: キーイベントが発生した際に呼び出されるフック関数リスト。登録するフック関数は `(keycode modifiers characters characters-ignoring converting-p)` の5つの引数を受け取る必要があります。
 

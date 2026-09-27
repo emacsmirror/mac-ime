@@ -47,6 +47,14 @@ When the package is installed, or if the module file is missing or outdated, `ma
 
 If you wish to download/update the module manually, run `M-x mac-ime-download-module`.
 
+The module is searched in the following order, and the first one matching the required version is used:
+
+1. `mac-ime-module.so` in the same directory as `mac-ime.el` (e.g. when built with `make`)
+2. `mac-ime-module.so` in the directory of `mac-ime.el` with symlinks resolved (with straight.el or elpaca, the module in the repository is used, so no download is needed)
+3. `mac-ime-module-<module version>.so` in `mac-ime-module-directory` (defaults to `mac-ime/` under `user-emacs-directory`)
+
+Downloaded modules are stored in location 3.  Because it is outside the package directory, upgrading the package from MELPA does not require downloading the module again unless the module version changes.  Older module versions are deleted when a new one is downloaded.
+
 > [!IMPORTANT]
 > `mac-ime` relies on a dynamic module (`.so`). Although you can update files via `package-upgrade` or `package-upgrade-all`, the already loaded module (`module-load`) cannot be completely replaced in-place within the same Emacs process. Please restart Emacs after upgrading.
 > While `mac-ime-unload-function` cleans up timers, hooks, and advices, it does not unload the dynamic module itself from the running process.
@@ -127,7 +135,7 @@ Since this module needs to determine whether the macOS input source is Roman or 
 
 - `(mac-ime-enable)`: Starts the event monitor, enabling key event monitoring and various hooks. At startup, it checks module existence and version consistency. If there is a missing module or a version mismatch, it prompts for automatic download.
 - `(mac-ime-disable)`: Stops and removes the event monitor, timers, and hooks.
-- `(mac-ime-download-module &optional tag)`: Downloads and places the dynamic module for the specified tag (defaults to `v<version>` corresponding to the current package version) from GitHub.
+- `(mac-ime-download-module &optional tag)`: Downloads the dynamic module for the specified tag (defaults to `v<version>` corresponding to the current package version) from GitHub and stores it in `mac-ime-module-directory`.  Older module versions in that directory are deleted.
 
 ### IME Operations
 
@@ -149,5 +157,6 @@ Since this module needs to determine whether the macOS input source is Roman or 
 - `mac-ime-no-ime-input-source-regexp`: Regular expression to determine which input sources are "IME off (Roman/English)".
 - `mac-ime-ime-on-input-source` / `mac-ime-ime-off-input-source`: Explicitly specifies the input source ID to turn IME on/off (usually automatically detected).
 - `mac-ime-title-rules`: Rules to determine the indicator (e.g., `[あ]`) displayed in the mode line based on the input source ID.
+- `mac-ime-module-directory`: Directory where the downloaded dynamic module is stored.  Defaults to `(locate-user-emacs-file "mac-ime/")`.
 - `mac-ime-debug-level`: Output level for debug messages (0: none, 1: input keys, 2: detailed).
 - `mac-ime-functions`: List of hook functions called when a key event occurs. Registered hook functions must accept 5 arguments: `(keycode modifiers characters characters-ignoring converting-p)`.

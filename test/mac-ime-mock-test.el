@@ -410,24 +410,28 @@
 (ert-deftest mac-ime-download-and-load-test ()
   "Test downloading dynamic module when version mismatch is simulated."
   (mac-ime-test-reset)
-  (let ((mac-ime-download-called nil)
-        (path "/tmp/fake-mac-ime-module.so"))
+  (let ((mac-ime-download-called nil))
     (cl-letf (((symbol-function 'mac-ime-download-module)
                (lambda (&optional _tag) (setq mac-ime-download-called t)))
-              ((symbol-function 'file-exists-p)
-               (lambda (p) (if (string= p path) nil t)))
+              ((symbol-function 'mac-ime--module-candidates)
+               (lambda () '("/nonexistent/mac-ime-module.so")))
               ((symbol-function 'y-or-n-p)
                (lambda (_prompt) t))
               (noninteractive nil)) ; Simulate interactive session
-      (should-error (mac-ime--check-module-loadable path) :type 'error)
+      (should-error (mac-ime--locate-module) :type 'error)
       (should mac-ime-download-called))))
 
 (ert-deftest mac-ime-download-module-version-check-test ()
   "Test that `mac-ime-download-module` validates the downloaded module version."
   (mac-ime-test-reset)
   (let* ((temp-dir (make-temp-file "mac-ime-test-" t))
-         (mac-ime-module-path (expand-file-name "mac-ime-module.so" temp-dir))
+         (mac-ime-module-directory (file-name-as-directory
+                                    (expand-file-name "store" temp-dir)))
          (mac-ime-required-module-version "0.1.0")
+         (mac-ime-module-path (expand-file-name "mac-ime-module-0.1.0.so"
+                                                mac-ime-module-directory))
+         (old-module (expand-file-name "mac-ime-module-0.0.9.so"
+                                       mac-ime-module-directory))
          (curl-exit-code 0)
          (simulated-content "")
          (orig-call-process (symbol-function 'call-process)))
@@ -451,11 +455,16 @@
                   ((symbol-function 'executable-find)
                    (lambda (cmd) (member cmd '("curl" "xattr")))))
           
-          ;; Case 1: Valid version downloaded
+          ;; Case 1: Valid version downloaded into `mac-ime-module-directory'
+          ;; (created on demand), and older downloaded modules are removed
+          (make-directory mac-ime-module-directory t)
+          (with-temp-file old-module
+            (insert "mac-ime-module-version:0.0.9"))
           (setq curl-exit-code 0
                 simulated-content "some binary content mac-ime-module-version:0.1.0 dummy")
           (should (mac-ime-download-module "v0.1.0"))
           (should (file-exists-p mac-ime-module-path))
+          (should-not (file-exists-p old-module))
           
           ;; Clean up file for next cases
           (delete-file mac-ime-module-path)
@@ -486,6 +495,92 @@
       
       ;; Delete the temp directory
       (delete-directory temp-dir t))))
+
+;; Helpers for module lookup tests
+
+(defun mac-ime-test--write-module (path version)
+  "Write a fake module with VERSION signature to PATH."
+  (make-directory (file-name-directory path) t)
+  (with-temp-file path
+    (insert (format "fake module mac-ime-module-version:%s dummy" version))))
+
+(defmacro mac-ime-test--with-module-dirs (&rest body)
+  "Run BODY with temporary package and download directories.
+`pkg-dir', `store-dir' and `root' are bound in BODY."
+  (declare (indent 0))
+  `(let* ((root (file-name-as-directory (make-temp-file "mac-ime-test-" t)))
+          (pkg-dir (expand-file-name "pkg/" root))
+          (store-dir (expand-file-name "store/" root))
+          (mac-ime-module-directory store-dir)
+          (mac-ime-module-path nil)
+          (mac-ime-required-module-version "0.1.0")
+          (mac-ime--package-file (expand-file-name "mac-ime.elc" pkg-dir)))
+     (make-directory pkg-dir t)
+     (with-temp-file (expand-file-name "mac-ime.el" pkg-dir))
+     (unwind-protect
+         (progn ,@body)
+       (delete-directory root t))))
+
+(ert-deftest mac-ime-module-download-path-test ()
+  "Test that the download path contains the required module version."
+  (let ((mac-ime-module-directory "/tmp/mac-ime-store/")
+        (mac-ime-required-module-version "1.2.3"))
+    (should (equal (mac-ime--module-download-path)
+                   "/tmp/mac-ime-store/mac-ime-module-1.2.3.so"))))
+
+(ert-deftest mac-ime-locate-module-package-dir-test ()
+  "Test that the module next to mac-ime.el is preferred."
+  (mac-ime-test--with-module-dirs
+    (let ((pkg-module (expand-file-name "mac-ime-module.so" pkg-dir)))
+      (mac-ime-test--write-module pkg-module "0.1.0")
+      (mac-ime-test--write-module (mac-ime--module-download-path) "0.1.0")
+      (should (equal (mac-ime--locate-module t) pkg-module)))))
+
+(ert-deftest mac-ime-locate-module-download-dir-test ()
+  "Test that a module in `mac-ime-module-directory' is used.
+This is the case after a MELPA upgrade: the new package directory has
+no module but the previously downloaded one is still available."
+  (mac-ime-test--with-module-dirs
+    (let ((download-called nil))
+      (mac-ime-test--write-module (mac-ime--module-download-path) "0.1.0")
+      (cl-letf (((symbol-function 'mac-ime-download-module)
+                 (lambda (&optional _tag) (setq download-called t))))
+        (should (equal (mac-ime--locate-module)
+                       (mac-ime--module-download-path)))
+        (should-not download-called)))))
+
+(ert-deftest mac-ime-locate-module-skip-mismatch-test ()
+  "Test that a module with a mismatched version is skipped."
+  (mac-ime-test--with-module-dirs
+    (mac-ime-test--write-module (expand-file-name "mac-ime-module.so" pkg-dir)
+                                "0.0.9")
+    (mac-ime-test--write-module (mac-ime--module-download-path) "0.1.0")
+    (should (equal (mac-ime--locate-module t)
+                   (mac-ime--module-download-path)))))
+
+(ert-deftest mac-ime-locate-module-straight-test ()
+  "Test that the module in the repository is found via symlinks.
+straight.el and elpaca create a build directory containing symlinks to
+the elisp files in the repository, without the module file."
+  (mac-ime-test--with-module-dirs
+    (let* ((repo-dir (expand-file-name "repos/mac-ime/" root))
+           (build-dir (expand-file-name "build/mac-ime/" root))
+           (repo-module (expand-file-name "mac-ime-module.so" repo-dir))
+           (mac-ime--package-file (expand-file-name "mac-ime.elc" build-dir)))
+      (make-directory repo-dir t)
+      (make-directory build-dir t)
+      (with-temp-file (expand-file-name "mac-ime.el" repo-dir))
+      (make-symbolic-link (expand-file-name "mac-ime.el" repo-dir)
+                          (expand-file-name "mac-ime.el" build-dir))
+      (with-temp-file mac-ime--package-file)
+      (mac-ime-test--write-module repo-module "0.1.0")
+      (should (equal (mac-ime--locate-module t)
+                     (file-truename repo-module))))))
+
+(ert-deftest mac-ime-locate-module-not-found-test ()
+  "Test that an error is signaled when no module is found."
+  (mac-ime-test--with-module-dirs
+    (should-error (mac-ime--locate-module t) :type 'error)))
 
 (ert-deftest mac-ime-buffer-switch-in-same-window-test ()
   "Test that switching buffers in the same window updates IME state appropriately."

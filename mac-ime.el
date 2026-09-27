@@ -37,7 +37,9 @@
 ;;
 ;; Note that this package requires a dynamic module (`mac-ime-module.so`).
 ;; On the first activation, it will prompt you and download the module
-;; from GitHub using `curl`.  Please ensure you are online for this step.
+;; from GitHub using `curl` into `mac-ime-module-directory', where it is
+;; kept across package upgrades.  Please ensure you are online for this
+;; step.
 ;;
 ;; To use this package, add the following to your init file:
 ;;
@@ -82,10 +84,47 @@
 (defvar mac-ime-module-file "mac-ime-module.so"
   "Name of the dynamic module file.")
 
-(defvar mac-ime-module-path
-  (expand-file-name mac-ime-module-file
-                    (file-name-directory (or load-file-name buffer-file-name)))
-  "Full path to the dynamic module.")
+(defconst mac-ime--package-file (or load-file-name buffer-file-name)
+  "File from which mac-ime was loaded.")
+
+(defcustom mac-ime-module-directory (locate-user-emacs-file "mac-ime/")
+  "Directory where the downloaded dynamic module is stored.
+The module is saved there as mac-ime-module-VERSION.so, so it is kept
+across package upgrades as long as the required module version does
+not change."
+  :type 'directory
+  :group 'mac-ime)
+
+(defvar mac-ime-module-path nil
+  "Full path to the dynamic module to try first.
+If nil, the module is searched in the locations returned by
+`mac-ime--module-candidates'.")
+
+(defun mac-ime--module-download-path ()
+  "Return the path where the downloaded module is stored."
+  (expand-file-name (format "mac-ime-module-%s.so"
+                            mac-ime-required-module-version)
+                    mac-ime-module-directory))
+
+(defun mac-ime--module-candidates ()
+  "Return the list of paths where the dynamic module is searched.
+The list consists of `mac-ime-module-path' if non-nil, the directory
+of mac-ime.el, the directory of the true name of mac-ime.el (the
+repository when installed via straight.el or elpaca), and
+`mac-ime--module-download-path'."
+  (let* ((dir (file-name-directory mac-ime--package-file))
+         (el-file (expand-file-name
+                   (concat (file-name-base mac-ime--package-file) ".el")
+                   dir)))
+    (delete-dups
+     (delq nil
+           (list (and mac-ime-module-path
+                      (expand-file-name mac-ime-module-path))
+                 (expand-file-name mac-ime-module-file dir)
+                 (expand-file-name mac-ime-module-file
+                                   (file-name-directory
+                                    (file-truename el-file)))
+                 (mac-ime--module-download-path))))))
 
 (defun mac-ime--get-module-version (path)
   "Extract the embedded version signature from the module at PATH."
@@ -104,19 +143,29 @@
   (display-warning 'mac-ime msg :error)
   (error "%s" msg))
 
+(defun mac-ime--delete-old-modules (keep)
+  "Delete downloaded modules in `mac-ime-module-directory' except KEEP."
+  (dolist (file (directory-files mac-ime-module-directory t
+                                 "\\`mac-ime-module-[0-9.]+\\.so\\'"))
+    (unless (file-equal-p file keep)
+      (ignore-errors (delete-file file)))))
+
 (defun mac-ime-download-module (&optional tag)
   "Download `mac-ime-module.so` from GitHub for TAG using curl.
-If TAG is nil, it defaults to \"v<mac-ime-version>\"."
+If TAG is nil, it defaults to \"v<mac-ime-version>\".  The module is
+saved in `mac-ime-module-directory' and older downloaded modules there
+are deleted."
   (interactive (list (read-string "Tag/Branch: " (concat "v" mac-ime-version))))
   (let* ((tag (if (or (null tag) (string= tag ""))
                   (concat "v" mac-ime-version)
                 tag))
          (url (format "https://raw.githubusercontent.com/%s/%s/mac-ime-module.so"
                        mac-ime-module-github-repo tag))
-         (dest-path mac-ime-module-path)
+         (dest-path (mac-ime--module-download-path))
          (temp-path (concat dest-path ".tmp")))
     (unless (executable-find "curl")
       (mac-ime--report-error "mac-ime: `curl` command not found.  Please install curl or download the module manually"))
+    (make-directory mac-ime-module-directory t)
     (message "mac-ime: Downloading mac-ime-module.so (%s) from GitHub..." tag)
     (with-temp-buffer
       (let ((exit-code (call-process "curl" nil '(t t) nil "-s" "-S" "-L" "-f" "-o" temp-path url)))
@@ -137,7 +186,9 @@ If TAG is nil, it defaults to \"v<mac-ime-version>\"."
                 (when (executable-find "xattr")
                   (ignore-errors
                     (call-process "xattr" nil nil nil "-d" "com.apple.quarantine" dest-path)))
-                (message "mac-ime: Successfully downloaded mac-ime-module.so for tag %s" tag)
+                (mac-ime--delete-old-modules dest-path)
+                (message "mac-ime: Successfully downloaded mac-ime-module.so for tag %s to %s"
+                         tag dest-path)
                 t)))
           (when (file-exists-p temp-path)
             (delete-file temp-path))
@@ -520,45 +571,56 @@ CONVERTING-P is non-nil if IME is currently converting."
             (mac-ime--debug 2 "mac-ime-deactivate-ime-on-prefix: Key %S (or translation) is bound to a keymap, deactivating IME" event)
             (mac-ime-deactivate-ime-temporarily)))))))
 
-(defun mac-ime--check-module-loadable (path &optional no-retry)
-  "Check if the module at PATH is loadable.
-If NO-RETRY is non-nil, do not attempt to download the module.
-Raises an error if the module does not exist, is not readable,
-is quarantined, or has an incompatible version."
-  (let ((should-download nil)
-        (reason nil))
-    (cond
-     ((not (file-exists-p path))
-      (setq should-download t
-            reason "Module file not found"))
-     ((not (file-readable-p path))
-      (setq should-download t
-            reason "Module file is not readable"))
-     (t
-      ;; Check embedded version
-      (let ((module-ver (mac-ime--get-module-version path)))
-        (cond
-         ((null module-ver)
-          (setq should-download t
-                reason "Module does not contain a version signature"))
-         ((not (string= mac-ime-required-module-version module-ver))
-          (setq should-download t
-                reason (format "Module version `%s' does not match required `%s'"
-                               module-ver mac-ime-required-module-version)))))))
+(defun mac-ime--module-problem (path)
+  "Return a string describing why the module at PATH is unusable.
+Return nil if PATH is a readable module with the required version."
+  (cond
+   ((not (file-exists-p path))
+    "Module file not found")
+   ((not (file-readable-p path))
+    "Module file is not readable")
+   (t
+    (let ((module-ver (mac-ime--get-module-version path)))
+      (cond
+       ((null module-ver)
+        "Module does not contain a version signature")
+       ((not (string= mac-ime-required-module-version module-ver))
+        (format "Module version `%s' does not match required `%s'"
+                module-ver mac-ime-required-module-version)))))))
 
-    (if should-download
+(defun mac-ime--check-quarantine (path)
+  "Signal an error if the module at PATH has the quarantine attribute."
+  (when (and (executable-find "xattr")
+             (zerop (call-process "xattr" nil nil nil
+                                  "-p" "com.apple.quarantine" path)))
+    (mac-ime--report-error (format "mac-ime: Module `%s' has com.apple.quarantine and cannot be loaded.\nPlease run: xattr -d com.apple.quarantine %s" path path))))
+
+(defun mac-ime--locate-module (&optional no-retry)
+  "Return the path of a compatible dynamic module.
+Search the paths returned by `mac-ime--module-candidates' and return
+the first one that has the required version.  If none is found, offer
+to download the module into `mac-ime-module-directory'.  If NO-RETRY
+is non-nil, do not attempt to download the module.  Signal an error if
+no compatible module is available or if it is quarantined."
+  (let* ((candidates (mac-ime--module-candidates))
+         (path (cl-find-if-not #'mac-ime--module-problem candidates)))
+    (if path
+        (progn
+          (mac-ime--check-quarantine path)
+          path)
+      (let ((reason (or (cl-some (lambda (p)
+                                   (and (file-exists-p p)
+                                        (mac-ime--module-problem p)))
+                                 candidates)
+                        "Module file not found")))
         (if (and (not no-retry)
                  (not noninteractive)
-                 (y-or-n-p (format "mac-ime: %s. Download matching module from GitHub?" reason)))
+                 (y-or-n-p (format "mac-ime: %s.  Download matching module from GitHub?" reason)))
             (progn
               (mac-ime-download-module)
               ;; Recheck after download, passing t to prevent infinite loop
-              (mac-ime--check-module-loadable path t))
-          (mac-ime--report-error (format "mac-ime: Cannot proceed without a compatible module (%s)" reason)))
-      ;; Check quarantine
-      (when (and (executable-find "xattr")
-                 (zerop (call-process "xattr" nil nil nil "-p" "com.apple.quarantine" path)))
-        (mac-ime--report-error (format "mac-ime: Module `%s' has com.apple.quarantine and cannot be loaded.\nPlease run: xattr -d com.apple.quarantine %s" path path))))))
+              (mac-ime--locate-module t))
+          (mac-ime--report-error (format "mac-ime: Cannot proceed without a compatible module (%s)" reason)))))))
 
 (defun mac-ime--load-module ()
   "Load the dynamic module if not already loaded."
@@ -566,7 +628,9 @@ is quarantined, or has an incompatible version."
       ;; Already loaded: verify version compatibility of the loaded module (e.g. after package update)
       (let ((loaded-ver (mac-ime-internal-version)))
         (unless (string= mac-ime-required-module-version loaded-ver)
-          (if (and (not noninteractive)
+          (if (and (not (cl-find-if-not #'mac-ime--module-problem
+                                        (mac-ime--module-candidates)))
+                   (not noninteractive)
                    (y-or-n-p (format "mac-ime: Loaded module version `%s' does not match required `%s'.  Download updated module from GitHub?"
                                      loaded-ver mac-ime-required-module-version)))
               (progn
@@ -574,19 +638,19 @@ is quarantined, or has an incompatible version."
                 (mac-ime--report-error "mac-ime: Downloaded updated module.  Please restart Emacs to load the new module version"))
             (mac-ime--report-error (format "mac-ime: Loaded module version `%s' does not match required `%s'.  Please restart Emacs"
                                            loaded-ver mac-ime-required-module-version)))))
-    ;; Not loaded: verify and load
-    (mac-ime--check-module-loadable mac-ime-module-path)
-    (condition-case err
-        (progn
-          (module-load mac-ime-module-path)
-          ;; Double check version at runtime
-          (let ((loaded-ver (mac-ime-internal-version)))
-            (unless (string= mac-ime-required-module-version loaded-ver)
-              (mac-ime--report-error (format "Loaded module version `%s' does not match required `%s'"
-                                             loaded-ver mac-ime-required-module-version)))))
-      (error (mac-ime--report-error (format "mac-ime: Failed to load module `%s': %s"
-                                            mac-ime-module-path
-                                            (error-message-string err)))))))
+    ;; Not loaded: locate, verify and load
+    (let ((path (mac-ime--locate-module)))
+      (condition-case err
+          (progn
+            (module-load path)
+            ;; Double check version at runtime
+            (let ((loaded-ver (mac-ime-internal-version)))
+              (unless (string= mac-ime-required-module-version loaded-ver)
+                (mac-ime--report-error (format "Loaded module version `%s' does not match required `%s'"
+                                               loaded-ver mac-ime-required-module-version)))))
+        (error (mac-ime--report-error (format "mac-ime: Failed to load module `%s': %s"
+                                              path
+                                              (error-message-string err))))))))
 
 (defvar mac-ime--last-selected-buffer nil
   "The buffer that was current during the last window selection change.")

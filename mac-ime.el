@@ -164,6 +164,9 @@ Each function is called with five arguments:
 (defconst mac-ime-NSEventModifierFlagOption #x80020 "Modifier flag for Option key.")
 (defconst mac-ime-NSEventModifierFlagRightOption #x80040 "Modifier flag for Right Option key.")
 (defconst mac-ime-NSEventModifierFlagFunction #x800000 "Modifier flag for Function key.")
+(defconst mac-ime-NSEventModifierFlagAnyCmd #x100000 "Modifier flag for any Cmd key.")
+(defconst mac-ime-NSEventModifierFlagAnyControl #x40000 "Modifier flag for any Control key.")
+(defconst mac-ime-NSEventModifierFlagAnyOption #x80000 "Modifier flag for any Option key.")
 
 (defun mac-ime-resolve-modifier-value (modifier-var)
   "Resolve the value of MODIFIER-VAR, handling `left' inheritance."
@@ -191,6 +194,27 @@ Each function is called with five arguments:
                ((eq base-var 'mac-option-modifier) 'meta)
                (t nil)))))
       val)))
+
+(defun mac-ime--sided-modifiers (modifiers any-mask left-mask right-mask
+                                           left-var right-var)
+  "Return the Emacs modifiers for a key that has left and right variants.
+MODIFIERS is the Cocoa modifier flags.  ANY-MASK is the
+device-independent flag of the key.  LEFT-MASK and RIGHT-MASK are the
+flags of the left and right keys.  LEFT-VAR and RIGHT-VAR are the
+variables that hold the Emacs modifiers of the left and right keys.
+Like the NS port of Emacs, the key is treated as the left key when
+MODIFIERS does not tell which one is pressed."
+  (let (result)
+    (unless (zerop (logand modifiers any-mask))
+      (let ((left-key (= (logand modifiers left-mask) left-mask))
+            (right-key (= (logand modifiers right-mask) right-mask)))
+        (when-let* ((right-key)
+                    (mod (mac-ime-resolve-modifier-value right-var)))
+          (push mod result))
+        (when-let* (((or left-key (not right-key)))
+                    (mod (mac-ime-resolve-modifier-value left-var)))
+          (push mod result))))
+    result))
 
 (defun mac-ime--event-from-cocoa (modifiers _chars chars-ignoring)
   "Convert Cocoa MODIFIERS, CHARS, and CHARS-IGNORING to an Emacs event."
@@ -222,29 +246,24 @@ Each function is called with five arguments:
              (t char-code)))
            (emacs-mods '()))
 
-      ;; Control keys
-      (when (and (= (logand modifiers mac-ime-NSEventModifierFlagControl) mac-ime-NSEventModifierFlagControl)
-                 (mac-ime-resolve-modifier-value 'mac-control-modifier))
-        (push (mac-ime-resolve-modifier-value 'mac-control-modifier) emacs-mods))
-      (when (and (= (logand modifiers mac-ime-NSEventModifierFlagRightControl) mac-ime-NSEventModifierFlagRightControl)
-                 (mac-ime-resolve-modifier-value 'mac-right-control-modifier))
-        (push (mac-ime-resolve-modifier-value 'mac-right-control-modifier) emacs-mods))
-
-      ;; Command keys
-      (when (and (= (logand modifiers mac-ime-NSEventModifierFlagCmd) mac-ime-NSEventModifierFlagCmd)
-                 (mac-ime-resolve-modifier-value 'mac-command-modifier))
-        (push (mac-ime-resolve-modifier-value 'mac-command-modifier) emacs-mods))
-      (when (and (= (logand modifiers mac-ime-NSEventModifierFlagRightCmd) mac-ime-NSEventModifierFlagRightCmd)
-                 (mac-ime-resolve-modifier-value 'mac-right-command-modifier))
-        (push (mac-ime-resolve-modifier-value 'mac-right-command-modifier) emacs-mods))
-
-      ;; Option/Meta keys
-      (when (and (= (logand modifiers mac-ime-NSEventModifierFlagOption) mac-ime-NSEventModifierFlagOption)
-                 (mac-ime-resolve-modifier-value 'mac-option-modifier))
-        (push (mac-ime-resolve-modifier-value 'mac-option-modifier) emacs-mods))
-      (when (and (= (logand modifiers mac-ime-NSEventModifierFlagRightOption) mac-ime-NSEventModifierFlagRightOption)
-                 (mac-ime-resolve-modifier-value 'mac-right-option-modifier))
-        (push (mac-ime-resolve-modifier-value 'mac-right-option-modifier) emacs-mods))
+      ;; Control, Command and Option keys
+      (setq emacs-mods
+            (append
+             (mac-ime--sided-modifiers
+              modifiers mac-ime-NSEventModifierFlagAnyControl
+              mac-ime-NSEventModifierFlagControl
+              mac-ime-NSEventModifierFlagRightControl
+              'mac-control-modifier 'mac-right-control-modifier)
+             (mac-ime--sided-modifiers
+              modifiers mac-ime-NSEventModifierFlagAnyCmd
+              mac-ime-NSEventModifierFlagCmd
+              mac-ime-NSEventModifierFlagRightCmd
+              'mac-command-modifier 'mac-right-command-modifier)
+             (mac-ime--sided-modifiers
+              modifiers mac-ime-NSEventModifierFlagAnyOption
+              mac-ime-NSEventModifierFlagOption
+              mac-ime-NSEventModifierFlagRightOption
+              'mac-option-modifier 'mac-right-option-modifier)))
 
       ;; Function key
       (when (and (= (logand modifiers mac-ime-NSEventModifierFlagFunction) mac-ime-NSEventModifierFlagFunction)

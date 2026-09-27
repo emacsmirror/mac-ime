@@ -536,5 +536,46 @@
                  "Caps+Fn"))
   (should (equal (mac-ime--modifier-string #x40000) "Ctrl")))
 
+(ert-deftest mac-ime-event-from-cocoa-side-test ()
+  "Test left/right modifier handling in `mac-ime--event-from-cocoa'."
+  (let ((mac-control-modifier 'control)
+        (mac-right-control-modifier 'left)
+        (mac-command-modifier 'super)
+        (mac-right-command-modifier 'hyper)
+        (mac-option-modifier 'meta)
+        (mac-right-option-modifier 'left))
+    ;; Left keys
+    (should (equal (mac-ime--event-from-cocoa
+                    mac-ime-NSEventModifierFlagControl "\x18" "x")
+                   ?\C-x))
+    (should (equal (mac-ime--event-from-cocoa
+                    mac-ime-NSEventModifierFlagCmd "x" "x")
+                   ?\s-x))
+    ;; Right keys
+    (should (equal (mac-ime--event-from-cocoa
+                    mac-ime-NSEventModifierFlagRightCmd "x" "x")
+                   ?\H-x))
+    (should (equal (mac-ime--event-from-cocoa
+                    mac-ime-NSEventModifierFlagRightOption "x" "x")
+                   ?\M-x))
+    ;; Both left and right keys
+    (should (equal (mac-ime--event-from-cocoa
+                    (logior mac-ime-NSEventModifierFlagCmd
+                            mac-ime-NSEventModifierFlagRightCmd)
+                    "x" "x")
+                   ?\H-\s-x))
+    ;; No left/right bits: treated as the left key
+    (should (equal (mac-ime--event-from-cocoa
+                    mac-ime-NSEventModifierFlagAnyControl "\x18" "x")
+                   ?\C-x))
+    (should (equal (mac-ime--event-from-cocoa
+                    mac-ime-NSEventModifierFlagAnyCmd "x" "x")
+                   ?\s-x))
+    (should (equal (mac-ime--event-from-cocoa
+                    mac-ime-NSEventModifierFlagAnyOption "x" "x")
+                   ?\M-x))
+    ;; Non-coalesced bit alone is not a modifier
+    (should (equal (mac-ime--event-from-cocoa #x100 "x" "x") ?x))))
+
 (provide 'mac-ime-mock-test)
 

@@ -515,5 +515,26 @@
       (kill-buffer buf-b)
       (mac-ime-disable))))
 
+(ert-deftest mac-ime-modifier-string-test ()
+  "Test short description of Cocoa modifier flags."
+  (should (equal (mac-ime--modifier-string 0) "-"))
+  (should (equal (mac-ime--modifier-string #x100) "-"))
+  (should (equal (mac-ime--modifier-string mac-ime-NSEventModifierFlagControl)
+                 "LCtrl"))
+  (should (equal (mac-ime--modifier-string
+                  mac-ime-NSEventModifierFlagRightControl)
+                 "RCtrl"))
+  (should (equal (mac-ime--modifier-string
+                  (logior mac-ime-NSEventModifierFlagCmd #x20104))
+                 "RShift+LCmd"))
+  (should (equal (mac-ime--modifier-string
+                  (logior mac-ime-NSEventModifierFlagOption
+                          mac-ime-NSEventModifierFlagRightOption))
+                 "LOpt+ROpt"))
+  (should (equal (mac-ime--modifier-string
+                  (logior mac-ime-NSEventModifierFlagFunction #x10000))
+                 "Caps+Fn"))
+  (should (equal (mac-ime--modifier-string #x40000) "Ctrl")))
+
 (provide 'mac-ime-mock-test)
 

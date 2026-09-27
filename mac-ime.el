@@ -157,13 +157,13 @@ Each function is called with five arguments:
   :type 'hook
   :group 'mac-ime)
 
-(defconst mac-ime-NSEventModifierFlagCmd #x100108 "Modifier flag for Cmd key.")
-(defconst mac-ime-NSEventModifierFlagRightCmd #x100110 "Modifier flag for Right Cmd key.")
-(defconst mac-ime-NSEventModifierFlagControl #x40101 "Modifier flag for Control key.")
-(defconst mac-ime-NSEventModifierFlagRightControl #x42100 "Modifier flag for Right Control key.")
-(defconst mac-ime-NSEventModifierFlagOption #x80120 "Modifier flag for Option key.")
-(defconst mac-ime-NSEventModifierFlagRightOption #x80140 "Modifier flag for Right Option key.")
-(defconst mac-ime-NSEventModifierFlagFunction #x800100 "Modifier flag for Function key.")
+(defconst mac-ime-NSEventModifierFlagCmd #x100008 "Modifier flag for Cmd key.")
+(defconst mac-ime-NSEventModifierFlagRightCmd #x100010 "Modifier flag for Right Cmd key.")
+(defconst mac-ime-NSEventModifierFlagControl #x40001 "Modifier flag for Control key.")
+(defconst mac-ime-NSEventModifierFlagRightControl #x42000 "Modifier flag for Right Control key.")
+(defconst mac-ime-NSEventModifierFlagOption #x80020 "Modifier flag for Option key.")
+(defconst mac-ime-NSEventModifierFlagRightOption #x80040 "Modifier flag for Right Option key.")
+(defconst mac-ime-NSEventModifierFlagFunction #x800000 "Modifier flag for Function key.")
 
 (defun mac-ime-resolve-modifier-value (modifier-var)
   "Resolve the value of MODIFIER-VAR, handling `left' inheritance."
@@ -377,6 +377,42 @@ FORMAT-STRING and ARGS are passed to `message`."
     (let ((timestamp (format-time-string "%M:%S.%3N")))
       (apply #'message (concat (format "[%s] mac-ime [DEBUG]: " timestamp) format-string) args))))
 
+(defun mac-ime--hex-string (str)
+  "Return a space-separated hex representation of each character code in STR."
+  (mapconcat (lambda (char) (format "%02X" char))
+             str
+             " "))
+
+(defconst mac-ime--modifier-names
+  '((#x10000 nil "Caps")
+    (#x20000 ((#x02 . "LShift") (#x04 . "RShift")) "Shift")
+    (#x40000 ((#x01 . "LCtrl") (#x2000 . "RCtrl")) "Ctrl")
+    (#x80000 ((#x20 . "LOpt") (#x40 . "ROpt")) "Opt")
+    (#x100000 ((#x08 . "LCmd") (#x10 . "RCmd")) "Cmd")
+    (#x800000 nil "Fn"))
+  "Table used to describe Cocoa modifier flags.
+Each element is (FLAG SIDES NAME).  FLAG is the device-independent
+flag, SIDES is an alist of (DEVICE-FLAG . SIDE-NAME) for left/right
+keys, and NAME is used when no device-dependent flag is set.")
+
+(defun mac-ime--modifier-string (modifiers)
+  "Return a short description of the keys pressed in MODIFIERS.
+MODIFIERS is the Cocoa modifier flags.  The result is a string such
+as \"LCtrl+RShift\", or \"-\" when no modifier key is pressed."
+  (let (names)
+    (dolist (entry mac-ime--modifier-names)
+      (when (/= 0 (logand modifiers (nth 0 entry)))
+        (let (found)
+          (dolist (side (nth 1 entry))
+            (when (/= 0 (logand modifiers (car side)))
+              (push (cdr side) names)
+              (setq found t)))
+          (unless found
+            (push (nth 2 entry) names)))))
+    (if names
+        (mapconcat #'identity (nreverse names) "+")
+      "-")))
+
 (defun mac-ime--get-ime-off-input-source ()
   "Return the input source ID to use to turn off IME.
 If `mac-ime-ime-off-input-source` is non-nil, return it.
@@ -544,8 +580,11 @@ MODIFIERS is the modifier flags.
 CHARACTERS is the string of characters.
 CHARACTERS-IGNORING is the string of characters ignoring modifiers.
 CONVERTING-P is non-nil if IME is currently converting."
-  (mac-ime--debug 1 "Key event: keycode=%d, modifiers=%d, characters=%s, characters-ignoring=%s, converting=%s"
-                  keycode modifiers characters characters-ignoring converting-p)
+  (mac-ime--debug 1 "Key event: keycode=%d, modifiers=%d (%s), characters=%s [%s], characters-ignoring=%s [%s], converting=%s"
+                  keycode modifiers (mac-ime--modifier-string modifiers)
+                  characters (mac-ime--hex-string characters)
+                  characters-ignoring (mac-ime--hex-string characters-ignoring)
+                  converting-p)
   (when (>= keycode 0)
     (run-hook-with-args 'mac-ime-functions keycode modifiers characters characters-ignoring converting-p))
   ;; Skip synchronization if the buffer has changed recently.
@@ -582,7 +621,7 @@ INPUT-METHOD is the name of the input method to activate."
   (mac-ime--debug 2 "mac-ime-activate-input-method called in %s buffer %s" input-method (current-buffer))
   (mac-ime-activate-ime)
   (setq deactivate-current-input-method-function #'mac-ime-deactivate-ime)
-  (when-let ((source (mac-ime-get-input-source)))
+  (when-let* ((source (mac-ime-get-input-source)))
     (mac-ime--update-title source)))
 
 (defun mac-ime-update-state (&optional _window)

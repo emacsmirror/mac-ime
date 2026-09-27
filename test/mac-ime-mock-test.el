@@ -719,6 +719,19 @@ the elisp files in the repository, without the module file."
                 'hyper))
     (should-not (mac-ime-resolve-modifier-value 'mac-function-modifier
                                                 :function))
+    ;; An explicit nil means no modifier, not the fallback default
+    (let ((mac-command-modifier nil)
+          (mac-right-command-modifier nil)
+          (mac-right-option-modifier nil))
+      (should-not (mac-ime-resolve-modifier-value 'mac-command-modifier))
+      (should-not (mac-ime-resolve-modifier-value
+                   'mac-right-command-modifier))
+      (should-not (mac-ime-resolve-modifier-value
+                   'mac-right-option-modifier)))
+    (let ((mac-right-option-modifier 'left)
+          (mac-option-modifier nil))
+      (should-not (mac-ime-resolve-modifier-value
+                   'mac-right-option-modifier)))
     ;; Invalid values
     (dolist (val '(up click M ctrl 1 "meta" (:ordinary 1) (:ordinary)))
       (let ((mac-option-modifier val))
@@ -764,7 +777,19 @@ the elisp files in the repository, without the module file."
     (let ((mac-control-modifier 'none))
       (should (eq (mac-ime--event-from-cocoa
                    mac-ime-NSEventModifierFlagControl "\x18" "x")
-                  ?x)))))
+                  ?x)))
+    ;; An explicit nil means no modifier, like `none'
+    (let ((mac-command-modifier nil))
+      (should (eq (mac-ime--event-from-cocoa
+                   mac-ime-NSEventModifierFlagCmd "x" "x")
+                  ?x)))
+    (let ((mac-right-command-modifier nil))
+      (should (eq (mac-ime--event-from-cocoa
+                   mac-ime-NSEventModifierFlagRightCmd "x" "x")
+                  ?x))
+      (should (eq (mac-ime--event-from-cocoa
+                   mac-ime-NSEventModifierFlagCmd "x" "x")
+                  ?\s-x)))))
 
 (ert-deftest mac-ime-event-from-cocoa-function-flag-test ()
   "Test that the fn key is ignored only for function keys."

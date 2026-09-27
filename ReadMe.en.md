@@ -100,7 +100,7 @@ This feature dynamically queries the active Emacs keymaps (`key-binding`) to det
 Thus, even if you customize keybindings or use third-party packages like Evil mode that modify keymaps, prefix keys are automatically recognized without any special manual configuration.
 
 Modifier keys are converted into an Emacs key the same way the NS port of Emacs does, according to `mac-control-modifier`, `mac-command-modifier`, `mac-option-modifier`, `mac-function-modifier` and their `mac-right-*` variants.
-- A modifier set to `none` is ignored.  For example, with `mac-option-modifier` set to `none`, Option+x is treated as the character typed (such as `≈`).
+- A modifier set to `none` or `nil` is ignored.  For example, with `mac-option-modifier` set to `none`, Option+x is treated as the character typed (such as `≈`).
 - The `(:ordinary SYMBOL :function SYMBOL :mouse SYMBOL)` form is supported.  `:function` is used for function keys (arrow keys, Home/End, Page Up/Down, F1-F24, TAB, RET, ESC, backspace, etc.) and `:ordinary` for other keys.
 - The fn modifier is ignored for function keys, because macOS sets it on the arrow keys and F keys even when fn is not pressed.
 - When a key is pressed with both a modifier set to `none` and a modifier that is not, the character is approximated by the one typed without any modifiers.

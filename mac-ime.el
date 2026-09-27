@@ -242,22 +242,25 @@ MODIFIER-VAR is a variable such as `mac-option-modifier'.  KIND is the
 kind of the key event, `:ordinary' (the default) or `:function'.  It
 selects the modifier when the value is a plist such as (:ordinary
 SYMBOL :function SYMBOL :mouse SYMBOL).  If the modifier is `left', the
-corresponding left key variable is used instead.  Return nil unless
-the modifier is in `mac-ime--modifier-symbols', so values such as
-`none' never reach `event-convert-list'."
+corresponding left key variable is used instead.  Like the NS port of
+Emacs, a nil value means no modifier.  Return nil unless the modifier
+is in `mac-ime--modifier-symbols', so values such as `none' never reach
+`event-convert-list'."
   (let ((kind (or kind :ordinary))
-        (val (if (boundp modifier-var) (symbol-value modifier-var) nil)))
-    ;; Provide fallbacks for non-GUI / batch / headless test environments where
-    ;; standard mac-* modifier variables are not bound.
-    (when (null val)
-      (setq val (cond
-                 ((eq modifier-var 'mac-control-modifier) 'control)
-                 ((eq modifier-var 'mac-right-control-modifier) 'left)
-                 ((eq modifier-var 'mac-command-modifier) 'super)
-                 ((eq modifier-var 'mac-right-command-modifier) 'left)
-                 ((eq modifier-var 'mac-option-modifier) 'meta)
-                 ((eq modifier-var 'mac-right-option-modifier) 'left)
-                 (t nil))))
+        (val (if (boundp modifier-var)
+                 ;; An explicit nil means no modifier, as in the NS port.
+                 (symbol-value modifier-var)
+               ;; Provide fallbacks for non-GUI / batch / headless test
+               ;; environments where standard mac-* modifier variables
+               ;; are not bound.
+               (cond
+                ((eq modifier-var 'mac-control-modifier) 'control)
+                ((eq modifier-var 'mac-right-control-modifier) 'left)
+                ((eq modifier-var 'mac-command-modifier) 'super)
+                ((eq modifier-var 'mac-right-command-modifier) 'left)
+                ((eq modifier-var 'mac-option-modifier) 'meta)
+                ((eq modifier-var 'mac-right-option-modifier) 'left)
+                (t nil)))))
     (setq val (mac-ime--modifier-of-kind val kind))
     (when (eq val 'left)
       (let* ((base-var-name (replace-regexp-in-string

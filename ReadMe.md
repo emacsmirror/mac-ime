@@ -104,6 +104,12 @@ C-\ (toggle-input-method) や cmd-space などで日本語入力状態にする�
 本機能は、Emacsのアクティブなキーマップ（`key-binding`）を動的に問い合わせてプレフィックスキー判定を行います。
 そのため、ユーザー自身がキーバインドをカスタマイズしている場合や、Evilモード等の外部パッケージを導入してキーマップが変更されている場合でも、特別な設定なしで自動的にプレフィックスキーとして認識されます。
 
+修飾キーは `mac-control-modifier`、`mac-command-modifier`、`mac-option-modifier`、`mac-function-modifier` および `mac-right-*` の設定に従い、Emacs本体(NS版)と同じ規則でEmacsのキーに変換して判定します。
+- `none` に設定された修飾キーは無視します。例えば `mac-option-modifier` が `none` の場合、Option+x は入力される文字（`≈` など）として扱います。
+- `(:ordinary SYMBOL :function SYMBOL :mouse SYMBOL)` 形式に対応しています。ファンクションキー（矢印、Home/End、Page Up/Down、F1-F24、TAB、RET、ESC、Backspace など）には `:function`、それ以外のキーには `:ordinary` の値を使います。
+- macOSはfnキーを押していなくても矢印キーやFキーにfnフラグを付けるため、ファンクションキーではfn修飾を無視します。
+- `none` の修飾キーとそれ以外の修飾キーを同時に押した場合、文字は修飾キーなしで入力される文字で近似します。
+
 > [!NOTE]
 > 以前のバージョンで存在した `mac-ime-prefix-keys` および `mac-ime-modifier-action-table` による手動のキーコード設定は不要になったため、廃止・削除されました。
 

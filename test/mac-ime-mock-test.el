@@ -19,6 +19,7 @@
 (defvar mac-right-command-modifier)
 (defvar mac-option-modifier)
 (defvar mac-right-option-modifier)
+(defvar mac-function-modifier)
 
 ;; Declare test function to silence complier warning
 (defun mac-ime-test-func () nil)
@@ -681,6 +682,142 @@ the elisp files in the repository, without the module file."
                    ?\M-x))
     ;; Non-coalesced bit alone is not a modifier
     (should (equal (mac-ime--event-from-cocoa #x100 "x" "x") ?x))))
+
+(defconst mac-ime-test-up-arrow (string #xF700)
+  "Characters of the up arrow key (NSUpArrowFunctionKey).")
+
+(ert-deftest mac-ime-resolve-modifier-value-test ()
+  "Test `mac-ime-resolve-modifier-value' with various values."
+  (let ((mac-option-modifier 'meta)
+        (mac-right-option-modifier 'left)
+        (mac-command-modifier '(:ordinary super :function hyper :mouse alt))
+        (mac-right-command-modifier '(:ordinary left :function alt))
+        (mac-control-modifier 'none)
+        (mac-right-control-modifier 'left)
+        (mac-function-modifier '(:ordinary hyper)))
+    (should (eq (mac-ime-resolve-modifier-value 'mac-option-modifier) 'meta))
+    (should (eq (mac-ime-resolve-modifier-value 'mac-right-option-modifier)
+                'meta))
+    ;; Plist form
+    (should (eq (mac-ime-resolve-modifier-value 'mac-command-modifier)
+                'super))
+    (should (eq (mac-ime-resolve-modifier-value 'mac-command-modifier
+                                                :function)
+                'hyper))
+    ;; `left' inside a plist of a right key variable
+    (should (eq (mac-ime-resolve-modifier-value 'mac-right-command-modifier
+                                                :ordinary)
+                'super))
+    (should (eq (mac-ime-resolve-modifier-value 'mac-right-command-modifier
+                                                :function)
+                'alt))
+    ;; `none' and `left' inheriting `none'
+    (should-not (mac-ime-resolve-modifier-value 'mac-control-modifier))
+    (should-not (mac-ime-resolve-modifier-value 'mac-right-control-modifier))
+    ;; Missing plist property
+    (should (eq (mac-ime-resolve-modifier-value 'mac-function-modifier)
+                'hyper))
+    (should-not (mac-ime-resolve-modifier-value 'mac-function-modifier
+                                                :function))
+    ;; Invalid values
+    (dolist (val '(up click M ctrl 1 "meta" (:ordinary 1) (:ordinary)))
+      (let ((mac-option-modifier val))
+        (should-not (mac-ime-resolve-modifier-value 'mac-option-modifier))))))
+
+(ert-deftest mac-ime-event-from-cocoa-none-test ()
+  "Test that `none' modifiers are ignored (issue #10)."
+  (let ((mac-control-modifier 'control)
+        (mac-right-control-modifier 'left)
+        (mac-command-modifier 'super)
+        (mac-right-command-modifier 'left)
+        (mac-option-modifier 'none)
+        (mac-right-option-modifier 'left)
+        (mac-function-modifier 'none))
+    ;; Cocoa sets the Function flag on the arrow keys
+    (should (eq (mac-ime--event-from-cocoa
+                 mac-ime-NSEventModifierFlagFunction
+                 mac-ime-test-up-arrow mac-ime-test-up-arrow)
+                'up))
+    ;; Option set to `none' types the character of CHARS
+    (should (eq (mac-ime--event-from-cocoa
+                 mac-ime-NSEventModifierFlagOption "≈" "x")
+                ?≈))
+    (should (eq (mac-ime--event-from-cocoa
+                 mac-ime-NSEventModifierFlagRightOption "≈" "x")
+                ?≈))
+    (should (eq (mac-ime--event-from-cocoa
+                 mac-ime-NSEventModifierFlagOption
+                 mac-ime-test-up-arrow mac-ime-test-up-arrow)
+                'up))
+    ;; With a control-like modifier, CHARS-IGNORING is used
+    (should (eq (mac-ime--event-from-cocoa
+                 (logior mac-ime-NSEventModifierFlagOption
+                         mac-ime-NSEventModifierFlagControl)
+                 "\x18" "x")
+                ?\C-x))
+    (should (eq (mac-ime--event-from-cocoa
+                 (logior mac-ime-NSEventModifierFlagOption
+                         mac-ime-NSEventModifierFlagCmd)
+                 "≈" "x")
+                ?\s-x))
+    ;; Control set to `none' does not turn Ctrl+x into `C-x'
+    (let ((mac-control-modifier 'none))
+      (should (eq (mac-ime--event-from-cocoa
+                   mac-ime-NSEventModifierFlagControl "\x18" "x")
+                  ?x)))))
+
+(ert-deftest mac-ime-event-from-cocoa-function-flag-test ()
+  "Test that the fn key is ignored only for function keys."
+  (let ((mac-function-modifier 'hyper))
+    (should (eq (mac-ime--event-from-cocoa
+                 mac-ime-NSEventModifierFlagFunction
+                 mac-ime-test-up-arrow mac-ime-test-up-arrow)
+                'up))
+    (should (eq (mac-ime--event-from-cocoa
+                 mac-ime-NSEventModifierFlagFunction "x" "x")
+                ?\H-x))))
+
+(ert-deftest mac-ime-event-from-cocoa-plist-test ()
+  "Test the (:ordinary SYMBOL :function SYMBOL) form of modifiers."
+  (let ((mac-control-modifier 'control)
+        (mac-right-control-modifier 'left)
+        (mac-option-modifier '(:ordinary meta :function alt :mouse meta))
+        (mac-right-option-modifier '(:ordinary left :function hyper)))
+    (should (eq (mac-ime--event-from-cocoa
+                 mac-ime-NSEventModifierFlagOption "≈" "x")
+                ?\M-x))
+    (should (eq (mac-ime--event-from-cocoa
+                 mac-ime-NSEventModifierFlagOption
+                 mac-ime-test-up-arrow mac-ime-test-up-arrow)
+                'A-up))
+    (should (eq (mac-ime--event-from-cocoa
+                 mac-ime-NSEventModifierFlagRightOption "≈" "x")
+                ?\M-x))
+    (should (eq (mac-ime--event-from-cocoa
+                 mac-ime-NSEventModifierFlagRightOption
+                 mac-ime-test-up-arrow mac-ime-test-up-arrow)
+                'H-up))
+    (should (eq (mac-ime--event-from-cocoa
+                 (logior mac-ime-NSEventModifierFlagOption
+                         mac-ime-NSEventModifierFlagControl)
+                 "\x18" "x")
+                ?\C-\M-x))
+    ;; Missing property for the kind of the key
+    (let ((mac-option-modifier '(:ordinary meta)))
+      (should (eq (mac-ime--event-from-cocoa
+                   mac-ime-NSEventModifierFlagOption
+                   mac-ime-test-up-arrow mac-ime-test-up-arrow)
+                  'up)))))
+
+(ert-deftest mac-ime-handler-hook-error-test ()
+  "Test that an error in `mac-ime-functions' does not stop other hooks."
+  (mac-ime-test-reset)
+  (let* ((called nil)
+         (mac-ime-functions
+          (list (lambda (&rest _) (error "Test error"))
+                (lambda (&rest _) (setq called t)))))
+    (mac-ime-handler 0 0 "a" "a" nil)
+    (should called)))
 
 (provide 'mac-ime-mock-test)
 

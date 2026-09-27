@@ -219,9 +219,34 @@ Each function is called with five arguments:
 (defconst mac-ime-NSEventModifierFlagAnyControl #x40000 "Modifier flag for any Control key.")
 (defconst mac-ime-NSEventModifierFlagAnyOption #x80000 "Modifier flag for any Option key.")
 
-(defun mac-ime-resolve-modifier-value (modifier-var)
-  "Resolve the value of MODIFIER-VAR, handling `left' inheritance."
-  (let ((val (if (boundp modifier-var) (symbol-value modifier-var) nil)))
+(defconst mac-ime--modifier-symbols
+  '(alt control hyper meta shift super)
+  "Modifier symbols of the mac-*-modifier variables used for key events.
+Other values, such as `none', make the key a shift-like modifier that
+Emacs does not add to the event.")
+
+(defun mac-ime--modifier-of-kind (value kind)
+  "Return the modifier specified by VALUE for key events of KIND.
+VALUE is the value of a mac-*-modifier variable.  It is either a
+symbol or a plist such as (:ordinary SYMBOL :function SYMBOL :mouse
+SYMBOL).  KIND is `:ordinary', `:function' or `:mouse'.  Return nil if
+VALUE is a plist without a symbol for KIND."
+  (if (symbolp value)
+      value
+    (let ((val (and (consp value) (plist-get value kind))))
+      (and (symbolp val) val))))
+
+(defun mac-ime-resolve-modifier-value (modifier-var &optional kind)
+  "Return the Emacs modifier symbol specified by MODIFIER-VAR.
+MODIFIER-VAR is a variable such as `mac-option-modifier'.  KIND is the
+kind of the key event, `:ordinary' (the default) or `:function'.  It
+selects the modifier when the value is a plist such as (:ordinary
+SYMBOL :function SYMBOL :mouse SYMBOL).  If the modifier is `left', the
+corresponding left key variable is used instead.  Return nil unless
+the modifier is in `mac-ime--modifier-symbols', so values such as
+`none' never reach `event-convert-list'."
+  (let ((kind (or kind :ordinary))
+        (val (if (boundp modifier-var) (symbol-value modifier-var) nil)))
     ;; Provide fallbacks for non-GUI / batch / headless test environments where
     ;; standard mac-* modifier variables are not bound.
     (when (null val)
@@ -233,26 +258,31 @@ Each function is called with five arguments:
                  ((eq modifier-var 'mac-option-modifier) 'meta)
                  ((eq modifier-var 'mac-right-option-modifier) 'left)
                  (t nil))))
-    (if (eq val 'left)
-        (let ((base-var-name (replace-regexp-in-string "-right-" "-" (symbol-name modifier-var))))
-          (let ((base-var (intern base-var-name)))
-            (if (boundp base-var)
-                (symbol-value base-var)
-              ;; If base var is not bound, use fallback
-              (cond
-               ((eq base-var 'mac-control-modifier) 'control)
-               ((eq base-var 'mac-command-modifier) 'super)
-               ((eq base-var 'mac-option-modifier) 'meta)
-               (t nil)))))
-      val)))
+    (setq val (mac-ime--modifier-of-kind val kind))
+    (when (eq val 'left)
+      (let* ((base-var-name (replace-regexp-in-string
+                             "-right-" "-" (symbol-name modifier-var)))
+             (base-var (intern base-var-name)))
+        (setq val (mac-ime--modifier-of-kind
+                   (if (boundp base-var)
+                       (symbol-value base-var)
+                     ;; If base var is not bound, use fallback
+                     (cond
+                      ((eq base-var 'mac-control-modifier) 'control)
+                      ((eq base-var 'mac-command-modifier) 'super)
+                      ((eq base-var 'mac-option-modifier) 'meta)
+                      (t nil)))
+                   kind))))
+    (and (memq val mac-ime--modifier-symbols) val)))
 
 (defun mac-ime--sided-modifiers (modifiers any-mask left-mask right-mask
-                                           left-var right-var)
+                                           left-var right-var kind)
   "Return the Emacs modifiers for a key that has left and right variants.
 MODIFIERS is the Cocoa modifier flags.  ANY-MASK is the
 device-independent flag of the key.  LEFT-MASK and RIGHT-MASK are the
 flags of the left and right keys.  LEFT-VAR and RIGHT-VAR are the
 variables that hold the Emacs modifiers of the left and right keys.
+KIND is the kind of the key event, `:ordinary' or `:function'.
 Like the NS port of Emacs, the key is treated as the left key when
 MODIFIERS does not tell which one is pressed."
   (let (result)
@@ -260,15 +290,22 @@ MODIFIERS does not tell which one is pressed."
       (let ((left-key (= (logand modifiers left-mask) left-mask))
             (right-key (= (logand modifiers right-mask) right-mask)))
         (when-let* ((right-key)
-                    (mod (mac-ime-resolve-modifier-value right-var)))
+                    (mod (mac-ime-resolve-modifier-value right-var kind)))
           (push mod result))
         (when-let* (((or left-key (not right-key)))
-                    (mod (mac-ime-resolve-modifier-value left-var)))
+                    (mod (mac-ime-resolve-modifier-value left-var kind)))
           (push mod result))))
     result))
 
-(defun mac-ime--event-from-cocoa (modifiers _chars chars-ignoring)
-  "Convert Cocoa MODIFIERS, CHARS, and CHARS-IGNORING to an Emacs event."
+(defun mac-ime--event-from-cocoa (modifiers chars chars-ignoring)
+  "Convert a Cocoa key event to an Emacs event.
+MODIFIERS is the Cocoa modifier flags.  CHARS is the string of
+characters of the event.  CHARS-IGNORING is the string of characters
+ignoring modifiers.  Like the NS port of Emacs, the mac-*-modifier
+variables are looked up for the kind of the key, `:function' or
+`:ordinary', the fn key is ignored for function keys, and the first
+character of CHARS is used for an ordinary key without control-like
+modifiers.  Return nil if CHARS-IGNORING is empty."
   (when (and chars-ignoring (> (length chars-ignoring) 0))
     (let* ((char-code (aref chars-ignoring 0))
            (base-key
@@ -295,31 +332,48 @@ MODIFIERS does not tell which one is pressed."
              ((= char-code #x0019) 'backtab)
              ((or (= char-code #x007F) (= char-code #x0008)) 'backspace)
              (t char-code)))
-           (emacs-mods '()))
-
-      ;; Control, Command and Option keys
-      (setq emacs-mods
+           (kind (if (symbolp base-key) :function :ordinary))
+           ;; Control, Command and Option keys
+           (emacs-mods
             (append
              (mac-ime--sided-modifiers
               modifiers mac-ime-NSEventModifierFlagAnyControl
               mac-ime-NSEventModifierFlagControl
               mac-ime-NSEventModifierFlagRightControl
-              'mac-control-modifier 'mac-right-control-modifier)
+              'mac-control-modifier 'mac-right-control-modifier kind)
              (mac-ime--sided-modifiers
               modifiers mac-ime-NSEventModifierFlagAnyCmd
               mac-ime-NSEventModifierFlagCmd
               mac-ime-NSEventModifierFlagRightCmd
-              'mac-command-modifier 'mac-right-command-modifier)
+              'mac-command-modifier 'mac-right-command-modifier kind)
              (mac-ime--sided-modifiers
               modifiers mac-ime-NSEventModifierFlagAnyOption
               mac-ime-NSEventModifierFlagOption
               mac-ime-NSEventModifierFlagRightOption
-              'mac-option-modifier 'mac-right-option-modifier)))
+              'mac-option-modifier 'mac-right-option-modifier kind))))
 
-      ;; Function key
-      (when (and (= (logand modifiers mac-ime-NSEventModifierFlagFunction) mac-ime-NSEventModifierFlagFunction)
-                 (mac-ime-resolve-modifier-value 'mac-function-modifier))
-        (push (mac-ime-resolve-modifier-value 'mac-function-modifier) emacs-mods))
+      ;; Function key.  Cocoa sets the flag on function keys such as the
+      ;; arrow keys even if fn is not pressed, so the NS port of Emacs
+      ;; ignores it for them.
+      (when-let* (((eq kind :ordinary))
+                  ((not (zerop (logand modifiers
+                                       mac-ime-NSEventModifierFlagFunction))))
+                  (mod (mac-ime-resolve-modifier-value
+                        'mac-function-modifier kind)))
+        (push mod emacs-mods))
+
+      ;; Without control-like modifiers, Emacs receives the characters
+      ;; typed with shift-like modifiers such as Option set to `none'.
+      ;; With both kinds of modifiers, Emacs looks up the character with
+      ;; UCKeyTranslate, which is approximated by CHARS-IGNORING here.
+      ;; Control characters in CHARS are not used, because with Control
+      ;; set to `none', Ctrl+x gives "\C-x" and would be taken as `C-x'.
+      (when (and (eq kind :ordinary)
+                 (null (remq 'shift emacs-mods))
+                 chars
+                 (> (length chars) 0)
+                 (>= (aref chars 0) 32))
+        (setq base-key (aref chars 0)))
 
       ;; Shift is handled if base-key is a symbol or control character
       (when (and (not (zerop (logand modifiers #x20000))) ; Shift bit (1 << 17)
@@ -655,6 +709,17 @@ no compatible module is available or if it is quarantined."
 (defvar mac-ime--last-selected-buffer nil
   "The buffer that was current during the last window selection change.")
 
+(defun mac-ime--call-hook-function (func &rest args)
+  "Call FUNC in `mac-ime-functions' with ARGS and return nil.
+An error in FUNC is logged and does not stop the other functions or
+the processing of the remaining key events."
+  (condition-case err
+      (apply func args)
+    (error
+     (message "mac-ime: Error in `mac-ime-functions' (%S): %s"
+              func (error-message-string err))))
+  nil)
+
 (defun mac-ime-handler (keycode modifiers characters characters-ignoring converting-p)
   "Internal handler called by the C module.
 Calls functions in `mac-ime-functions`.
@@ -669,7 +734,8 @@ CONVERTING-P is non-nil if IME is currently converting."
                   characters-ignoring (mac-ime--hex-string characters-ignoring)
                   converting-p)
   (when (>= keycode 0)
-    (run-hook-with-args 'mac-ime-functions keycode modifiers characters characters-ignoring converting-p))
+    (run-hook-wrapped 'mac-ime-functions #'mac-ime--call-hook-function
+                      keycode modifiers characters characters-ignoring converting-p))
   ;; Skip synchronization if the buffer has changed recently.
   ;; This prevents race conditions where the poll runs before window-selection-change-functions.
   (let ((current (current-buffer)))

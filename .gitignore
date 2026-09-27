@@ -48,3 +48,6 @@ fastlane/test_output
 
 # direnv
 .envrc
+
+# Claude Code local settings
+.claude/settings.local.json

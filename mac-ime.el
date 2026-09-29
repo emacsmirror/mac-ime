@@ -81,7 +81,17 @@
 (defconst mac-ime-input-method "mac-ime"
   "Name of the mac-ime input method.")
 
-(defvar mac-ime-module-file "mac-ime-module.so"
+(defconst mac-ime--module-name "mac-ime-module"
+  "Base name of the dynamic module.
+It must match the feature provided by the module.")
+
+(defun mac-ime--module-file-name (&optional version)
+  "Return the file name of the dynamic module.
+If VERSION is non-nil, return the versioned name used in
+`mac-ime-module-directory', such as mac-ime-module-0.1.0.so."
+  (concat mac-ime--module-name (and version (concat "-" version)) ".so"))
+
+(defconst mac-ime-module-file (mac-ime--module-file-name)
   "Name of the dynamic module file.")
 
 (defconst mac-ime--package-file (or load-file-name buffer-file-name)
@@ -102,8 +112,8 @@ If nil, the module is searched in the locations returned by
 
 (defun mac-ime--module-download-path ()
   "Return the path where the downloaded module is stored."
-  (expand-file-name (format "mac-ime-module-%s.so"
-                            mac-ime-required-module-version)
+  (expand-file-name (mac-ime--module-file-name
+                     mac-ime-required-module-version)
                     mac-ime-module-directory))
 
 (defun mac-ime--module-candidates ()
@@ -133,7 +143,10 @@ repository when installed via straight.el or elpaca), and
       (set-buffer-multibyte nil)
       (insert-file-contents-literally path)
       (goto-char (point-min))
-      (when (re-search-forward "mac-ime-module-version:\\([0-9.]+\\)" nil t)
+      (when (re-search-forward
+             (concat (regexp-quote mac-ime--module-name)
+                     "-version:\\([0-9.]+\\)")
+             nil t)
         (decode-coding-string (match-string 1) 'utf-8)))))
 
 
@@ -146,7 +159,9 @@ repository when installed via straight.el or elpaca), and
 (defun mac-ime--delete-old-modules (keep)
   "Delete downloaded modules in `mac-ime-module-directory' except KEEP."
   (dolist (file (directory-files mac-ime-module-directory t
-                                 "\\`mac-ime-module-[0-9.]+\\.so\\'"))
+                                 (concat "\\`"
+                                         (regexp-quote mac-ime--module-name)
+                                         "-[0-9.]+\\.so\\'")))
     (unless (file-equal-p file keep)
       (ignore-errors (delete-file file)))))
 
@@ -159,14 +174,15 @@ are deleted."
   (let* ((tag (if (or (null tag) (string= tag ""))
                   (concat "v" mac-ime-version)
                 tag))
-         (url (format "https://raw.githubusercontent.com/%s/%s/mac-ime-module.so"
-                       mac-ime-module-github-repo tag))
+         (url (format "https://raw.githubusercontent.com/%s/%s/%s"
+                      mac-ime-module-github-repo tag mac-ime-module-file))
          (dest-path (mac-ime--module-download-path))
          (temp-path (concat dest-path ".tmp")))
     (unless (executable-find "curl")
       (mac-ime--report-error "mac-ime: `curl` command not found.  Please install curl or download the module manually"))
     (make-directory mac-ime-module-directory t)
-    (message "mac-ime: Downloading mac-ime-module.so (%s) from GitHub..." tag)
+    (message "mac-ime: Downloading %s (%s) from GitHub..."
+             mac-ime-module-file tag)
     (with-temp-buffer
       (let ((exit-code (call-process "curl" nil '(t t) nil "-s" "-S" "-L" "-f" "-o" temp-path url)))
         (if (= exit-code 0)
@@ -187,16 +203,18 @@ are deleted."
                   (ignore-errors
                     (call-process "xattr" nil nil nil "-d" "com.apple.quarantine" dest-path)))
                 (mac-ime--delete-old-modules dest-path)
-                (message "mac-ime: Successfully downloaded mac-ime-module.so for tag %s to %s"
-                         tag dest-path)
+                (message "mac-ime: Successfully downloaded %s for tag %s to %s"
+                         mac-ime-module-file tag dest-path)
                 t)))
           (when (file-exists-p temp-path)
             (delete-file temp-path))
           (let ((err-msg (string-trim (buffer-string))))
             (mac-ime--report-error
              (if (> (length err-msg) 0)
-                 (format "mac-ime: Failed to download mac-ime-module.so: %s" err-msg)
-               (format "mac-ime: Failed to download mac-ime-module.so: curl exited with code %d" exit-code)))))))))
+                 (format "mac-ime: Failed to download %s: %s"
+                         mac-ime-module-file err-msg)
+               (format "mac-ime: Failed to download %s: curl exited with code %d"
+                       mac-ime-module-file exit-code)))))))))
 
 (defvar mac-ime-timer nil
   "Timer object for polling events.")

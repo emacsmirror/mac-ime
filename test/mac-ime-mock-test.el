@@ -441,8 +441,6 @@
          (mac-ime-required-module-version "0.1.0")
          (mac-ime-module-path (expand-file-name "mac-ime-module-0.1.0.so"
                                                 mac-ime-module-directory))
-         (old-module (expand-file-name "mac-ime-module-0.0.9.so"
-                                       mac-ime-module-directory))
          (curl-exit-code 0)
          (simulated-content "")
          (orig-call-process (symbol-function 'call-process)))
@@ -467,15 +465,11 @@
                    (lambda (cmd) (member cmd '("curl" "xattr")))))
           
           ;; Case 1: Valid version downloaded into `mac-ime-module-directory'
-          ;; (created on demand), and older downloaded modules are removed
-          (make-directory mac-ime-module-directory t)
-          (with-temp-file old-module
-            (insert "mac-ime-module-version:0.0.9"))
+          ;; (created on demand)
           (setq curl-exit-code 0
                 simulated-content "some binary content mac-ime-module-version:0.1.0 dummy")
           (should (mac-ime-download-module "v0.1.0"))
           (should (file-exists-p mac-ime-module-path))
-          (should-not (file-exists-p old-module))
           
           ;; Clean up file for next cases
           (delete-file mac-ime-module-path)

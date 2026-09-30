@@ -56,7 +56,7 @@ M-x package-install RET mac-ime RET
 2. `mac-ime.el` のシンボリックリンクを解決したディレクトリの `mac-ime-module.so`（straight.el や elpaca を使用している場合はリポジトリ内のモジュールが使われるため、ダウンロードは不要です）
 3. `mac-ime-module-directory`（デフォルトは `user-emacs-directory` 配下の `mac-ime/`）の `mac-ime-module-<モジュールバージョン>.so`
 
-ダウンロードしたモジュールは 3. の場所に保存されます。パッケージディレクトリの外に保存されるため、MELPA でパッケージを更新してもモジュールのバージョンが変わらない限り再ダウンロードは不要です。古いバージョンのモジュールはダウンロード時に削除されます。
+ダウンロードしたモジュールは 3. の場所に保存されます。パッケージディレクトリの外に保存されるため、MELPA でパッケージを更新してもモジュールのバージョンが変わらない限り再ダウンロードは不要です。
 
 > [!IMPORTANT]
 > `mac-ime` はダイナミックモジュール (`.so`) を使用しています。
@@ -195,7 +195,7 @@ emacsでは書類(buffer)ごとのinput methodは別々となるのが既定の�
 - `(mac-ime-enable)`: イベントモニターを開始し、キーイベントの監視と各種フックを有効にします。
   - 起動時にモジュールの存在とバージョン整合性をチェックし、不足や不整合がある場合は自動ダウンロードを促します。
 - `(mac-ime-disable)`: イベントモニター、タイマー、およびフックを停止・解除します。
-- `(mac-ime-download-module &optional tag)`: 指定したタグ（デフォルトは現在のパッケージバージョンに対応する `v<version>`）のダイナミックモジュールを GitHub からダウンロードし、`mac-ime-module-directory` に保存します。同ディレクトリ内の古いバージョンのモジュールは削除されます。
+- `(mac-ime-download-module &optional tag)`: 指定したタグ（デフォルトは現在のパッケージバージョンに対応する `v<version>`）のダイナミックモジュールを GitHub からダウンロードし、`mac-ime-module-directory` に保存します。
 
 ### IME操作
 

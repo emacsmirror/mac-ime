@@ -53,7 +53,7 @@ The module is searched in the following order, and the first one matching the re
 2. `mac-ime-module.so` in the directory of `mac-ime.el` with symlinks resolved (with straight.el or elpaca, the module in the repository is used, so no download is needed)
 3. `mac-ime-module-<module version>.so` in `mac-ime-module-directory` (defaults to `mac-ime/` under `user-emacs-directory`)
 
-Downloaded modules are stored in location 3.  Because it is outside the package directory, upgrading the package from MELPA does not require downloading the module again unless the module version changes.  Older module versions are deleted when a new one is downloaded.
+Downloaded modules are stored in location 3.  Because it is outside the package directory, upgrading the package from MELPA does not require downloading the module again unless the module version changes.
 
 > [!IMPORTANT]
 > `mac-ime` relies on a dynamic module (`.so`). Although you can update files via `package-upgrade` or `package-upgrade-all`, the already loaded module (`module-load`) cannot be completely replaced in-place within the same Emacs process. Please restart Emacs after upgrading.
@@ -141,7 +141,7 @@ Since this module needs to determine whether the macOS input source is Roman or 
 
 - `(mac-ime-enable)`: Starts the event monitor, enabling key event monitoring and various hooks. At startup, it checks module existence and version consistency. If there is a missing module or a version mismatch, it prompts for automatic download.
 - `(mac-ime-disable)`: Stops and removes the event monitor, timers, and hooks.
-- `(mac-ime-download-module &optional tag)`: Downloads the dynamic module for the specified tag (defaults to `v<version>` corresponding to the current package version) from GitHub and stores it in `mac-ime-module-directory`.  Older module versions in that directory are deleted.
+- `(mac-ime-download-module &optional tag)`: Downloads the dynamic module for the specified tag (defaults to `v<version>` corresponding to the current package version) from GitHub and stores it in `mac-ime-module-directory`.
 
 ### IME Operations
 

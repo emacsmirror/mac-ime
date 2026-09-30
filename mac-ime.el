@@ -156,20 +156,10 @@ repository when installed via straight.el or elpaca), and
   (display-warning 'mac-ime msg :error)
   (error "%s" msg))
 
-(defun mac-ime--delete-old-modules (keep)
-  "Delete downloaded modules in `mac-ime-module-directory' except KEEP."
-  (dolist (file (directory-files mac-ime-module-directory t
-                                 (concat "\\`"
-                                         (regexp-quote mac-ime--module-name)
-                                         "-[0-9.]+\\.so\\'")))
-    (unless (file-equal-p file keep)
-      (ignore-errors (delete-file file)))))
-
 (defun mac-ime-download-module (&optional tag)
   "Download `mac-ime-module.so` from GitHub for TAG using curl.
 If TAG is nil, it defaults to \"v<mac-ime-version>\".  The module is
-saved in `mac-ime-module-directory' and older downloaded modules there
-are deleted."
+saved in `mac-ime-module-directory'."
   (interactive (list (read-string "Tag/Branch: " (concat "v" mac-ime-version))))
   (let* ((tag (if (or (null tag) (string= tag ""))
                   (concat "v" mac-ime-version)
@@ -202,7 +192,6 @@ are deleted."
                 (when (executable-find "xattr")
                   (ignore-errors
                     (call-process "xattr" nil nil nil "-d" "com.apple.quarantine" dest-path)))
-                (mac-ime--delete-old-modules dest-path)
                 (message "mac-ime: Successfully downloaded %s for tag %s to %s"
                          mac-ime-module-file tag dest-path)
                 t)))

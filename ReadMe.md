@@ -177,7 +177,7 @@ mac-ime本体では扱っていない外部パッケージのコマンドで、I
               (lambda (&rest _) (mac-ime--restore-input-source))))
 ```
 
-なお、`mac-ime-disable` が解除するのは `mac-ime-temporary-deactivate-functions` に含まれる関数のadviceのみです。上記の設定は `mac-ime-disable` では解除されません。
+なお、`mac-ime-disable` が解除するのは `mac-ime-temporary-deactivate-functions` に含まれる関数のadviceのみです。上記の設定は `mac-ime-disable` では解除されません。解除したい場合は `mac-ime-remove-auto-deactivate` / `mac-ime-remove-temporary-deactivate` を使ってください。
 
 ## 検討事項いろいろ
 ソフト作成中に問題となった動作と、その対策方法についてまとめる
@@ -245,6 +245,8 @@ emacsでは書類(buffer)ごとのinput methodは別々となるのが既定の�
 
 - `(mac-ime-auto-deactivate FUNC)`: 指定した関数 `FUNC` の実行中に自動的にIMEをオフにし、終了後に復元する設定（アドバイス）を追加します。
 - `(mac-ime-temporary-deactivate FUNC)`: 指定した関数 `FUNC` の実行前に一時的にIMEをオフにする設定（アドバイス）を追加します。状態の復元は、次に新たなコマンドが実行される直前に行われます。
+- `(mac-ime-remove-auto-deactivate FUNC)`: `mac-ime-auto-deactivate` で `FUNC` に追加した設定（アドバイス）を削除します。`FUNC` には `(FUNCTION . ARG-INDEX)` 形式も指定できます。
+- `(mac-ime-remove-temporary-deactivate FUNC)`: `mac-ime-temporary-deactivate` で `FUNC` に追加した設定（アドバイス）を削除します。
 
 ## カスタマイズ
 

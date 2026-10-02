@@ -169,7 +169,7 @@ However, the IME is restored just before the next command is executed, so when t
               (lambda (&rest _) (mac-ime--restore-input-source))))
 ```
 
-Note that `mac-ime-disable` only removes the advice of functions included in `mac-ime-temporary-deactivate-functions`. The settings above are not removed by `mac-ime-disable`.
+Note that `mac-ime-disable` only removes the advice of functions included in `mac-ime-temporary-deactivate-functions`. The settings above are not removed by `mac-ime-disable`. To remove them, use `mac-ime-remove-auto-deactivate` / `mac-ime-remove-temporary-deactivate`.
 
 ## Provided Functions
 
@@ -191,6 +191,8 @@ Note that `mac-ime-disable` only removes the advice of functions included in `ma
 
 - `(mac-ime-auto-deactivate FUNC)`: Configures the specified function `FUNC` to automatically turn off the IME during execution and restore it afterwards.
 - `(mac-ime-temporary-deactivate FUNC)`: Configures the specified function `FUNC` to temporarily turn off the IME before execution. The IME state is restored right before the next new command is executed.
+- `(mac-ime-remove-auto-deactivate FUNC)`: Removes the advice added to `FUNC` by `mac-ime-auto-deactivate`. `FUNC` may also be given in the `(FUNCTION . ARG-INDEX)` form.
+- `(mac-ime-remove-temporary-deactivate FUNC)`: Removes the advice added to `FUNC` by `mac-ime-temporary-deactivate`.
 
 ## Customization
 

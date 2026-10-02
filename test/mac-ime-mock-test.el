@@ -244,6 +244,42 @@
     (advice-remove 'mac-ime-test-func (intern "mac-ime--auto-deactivate-mac-ime-test-func"))
     (fmakunbound 'mac-ime-test-func)))
 
+(ert-deftest mac-ime-remove-auto-deactivate-test ()
+  "Test that `mac-ime-remove-auto-deactivate' removes the advice."
+  (mac-ime-test-reset)
+  (defalias 'mac-ime-test-remove-func (lambda (&rest _) nil))
+  (unwind-protect
+      (let ((advice-name (intern "mac-ime--auto-deactivate-mac-ime-test-remove-func")))
+        ;; Symbol form
+        (mac-ime-auto-deactivate 'mac-ime-test-remove-func)
+        (should (advice-member-p advice-name 'mac-ime-test-remove-func))
+        (mac-ime-remove-auto-deactivate 'mac-ime-test-remove-func)
+        (should-not (advice-member-p advice-name 'mac-ime-test-remove-func))
+        ;; Cons form
+        (mac-ime-auto-deactivate '(mac-ime-test-remove-func . 1))
+        (should (advice-member-p advice-name 'mac-ime-test-remove-func))
+        (mac-ime-remove-auto-deactivate '(mac-ime-test-remove-func . 1))
+        (should-not (advice-member-p advice-name 'mac-ime-test-remove-func))
+        ;; Removing again is harmless
+        (mac-ime-remove-auto-deactivate 'mac-ime-test-remove-func))
+    (fmakunbound 'mac-ime-test-remove-func)))
+
+(ert-deftest mac-ime-remove-temporary-deactivate-test ()
+  "Test that `mac-ime-remove-temporary-deactivate' removes the advice."
+  (mac-ime-test-reset)
+  (defalias 'mac-ime-test-remove-func (lambda (&rest _) nil))
+  (unwind-protect
+      (progn
+        (mac-ime-temporary-deactivate 'mac-ime-test-remove-func)
+        (should (advice-member-p #'mac-ime--temporary-deactivate-advice
+                                 'mac-ime-test-remove-func))
+        (mac-ime-remove-temporary-deactivate 'mac-ime-test-remove-func)
+        (should-not (advice-member-p #'mac-ime--temporary-deactivate-advice
+                                     'mac-ime-test-remove-func))
+        ;; Removing again is harmless
+        (mac-ime-remove-temporary-deactivate 'mac-ime-test-remove-func))
+    (fmakunbound 'mac-ime-test-remove-func)))
+
 (ert-deftest mac-ime-sync-state-test ()
   "Test synchronization of Emacs input method state with OS input source."
   (mac-ime-test-reset)

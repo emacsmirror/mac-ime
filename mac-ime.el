@@ -832,11 +832,9 @@ Otherwise, deactivate IME."
     (remove-hook 'mac-ime-functions #'mac-ime-deactivate-ime-on-prefix)
     (mac-ime-internal-stop)
     (dolist (func mac-ime-auto-deactivate-functions)
-      (let* ((f-sym (if (consp func) (car func) func))
-             (advice-name (intern (format "mac-ime--auto-deactivate-%s" f-sym))))
-        (advice-remove f-sym advice-name)))
+      (mac-ime-remove-auto-deactivate func))
     (dolist (func mac-ime-temporary-deactivate-functions)
-      (advice-remove func #'mac-ime--temporary-deactivate-advice))
+      (mac-ime-remove-temporary-deactivate func))
     (remove-function after-focus-change-function #'mac-ime--on-focus)
     (remove-hook 'window-selection-change-functions #'mac-ime-update-state)
     (remove-hook 'window-buffer-change-functions #'mac-ime-update-state)
@@ -884,6 +882,12 @@ CONFIG is the configuration (symbol or cons)."
             (apply orig-fun args)))
       (apply orig-fun args))))
 
+(defun mac-ime--auto-deactivate-advice-name (func)
+  "Return the advice symbol used by `mac-ime-auto-deactivate' for FUNC.
+FUNC is a function symbol or a cons cell (FUNCTION . ARG-INDEX)."
+  (let ((f-sym (if (consp func) (car func) func)))
+    (intern (format "mac-ime--auto-deactivate-%s" f-sym))))
+
 (defun mac-ime-auto-deactivate (func)
   "Add advice to FUNC to deactivate IME during its execution.
 FUNC can be a function symbol or a cons cell (FUNCTION . ARG-INDEX).
@@ -892,12 +896,20 @@ INHERIT-INPUT-METHOD argument.  If the current input method is
 `mac-ime-input-method` and the argument is nil (or not specified), IME is
 deactivated.  Otherwise, the IME state is not changed.
 The IME state is restored after FUNC completes."
-  (let* ((f-sym (if (consp func) (car func) func))
-         (advice-name (intern (format "mac-ime--auto-deactivate-%s" f-sym))))
+  (let ((f-sym (if (consp func) (car func) func))
+        (advice-name (mac-ime--auto-deactivate-advice-name func)))
     (fset advice-name
           (lambda (orig-fun &rest args)
             (mac-ime--auto-deactivate-body orig-fun args func)))
     (advice-add f-sym :around advice-name)))
+
+(defun mac-ime-remove-auto-deactivate (func)
+  "Remove the advice added to FUNC by `mac-ime-auto-deactivate'.
+FUNC can be a function symbol or a cons cell (FUNCTION . ARG-INDEX).
+Only the function part is used; ARG-INDEX is ignored."
+  (let ((f-sym (if (consp func) (car func) func))
+        (advice-name (mac-ime--auto-deactivate-advice-name func)))
+    (advice-remove f-sym advice-name)))
 
 (defun mac-ime--temporary-deactivate-advice (&rest _args)
   "Advice to deactivate IME temporarily."
@@ -906,6 +918,11 @@ The IME state is restored after FUNC completes."
 (defun mac-ime-temporary-deactivate (func)
   "Add advice to FUNC to deactivate IME temporarily before its execution."
   (advice-add func :before #'mac-ime--temporary-deactivate-advice))
+
+(defun mac-ime-remove-temporary-deactivate (func)
+  "Remove the advice added to FUNC by `mac-ime-temporary-deactivate'.
+FUNC is a function symbol."
+  (advice-remove func #'mac-ime--temporary-deactivate-advice))
 
 (defvar mac-ime--sync-paused nil
   "Whether input method synchronization is paused.")

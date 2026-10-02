@@ -143,6 +143,42 @@ C-\ (toggle-input-method) や cmd-space などで日本語入力状態にする�
 
 本モジュールではmacOSの入力ソースがRomanなのか日本語などの非Romanなのかを判定する必要があるためinput source IDを正規表現を使って判定を行っています。もし特殊なIMEを使っていてこの判断が正しく動作しない場合はmac-ime-no-ime-input-source-regexpで正しくRomanを判断できるように設定してください。現在使用可能なinput source IDは(mac-ime-get-input-source-list)で取得できます。
 
+## 設定例
+
+mac-ime本体では扱っていない外部パッケージのコマンドで、IMEをオフにしたい場合の設定例です。
+
+### 関数実行中にIMEをオフにする（単純な例）
+
+`mac-ime-auto-deactivate` を使うと、指定した関数の実行中だけIMEをオフにし、関数の終了後に元に戻します。たとえば `avy-goto-char-timer` で、関数の実行中の入力をRomanにしたい場合は以下のように設定します。
+
+```elisp
+(mac-ime-auto-deactivate 'avy-goto-char-timer)
+```
+
+### 後続のコマンドでキー入力を受け付けるパッケージ（複雑な例: ace-jump-mode）
+
+`ace-jump-mode` は、候補を表示してオーバーライド用のキーマップを設定するだけで関数から戻り、head-charの入力は後続のコマンド（`ace-jump-move`）として処理されます。そのため `mac-ime-auto-deactivate` ではhead-charの入力時にIMEが戻ってしまいます。また、head-charが2文字以上になる場合もあります。
+
+`mac-ime-temporary-deactivate` は、関数の実行前にIMEをオフにし、関数が終了した後も次のコマンドが実行される直前までIMEオフを保持します。関数の終了後に入力されるhead-charをRomanで受け付けるには、この性質が必要なため `mac-ime-temporary-deactivate` を使います。
+
+ただし、IMEの復元は次のコマンドの実行直前に行われるため、head-charが2文字以上の場合は、1文字目の入力コマンド（`ace-jump-move`）の実行前にIMEが戻ってしまいます。そのため `ace-jump-move` も対象に含め、実行のたびに再度IMEをオフにします。また、ジャンプ完了後に次のキー入力までIMEが戻らないのを避けるため、終了時に明示的に復元します。
+
+```elisp
+(with-eval-after-load 'ace-jump-mode
+  (mac-ime-temporary-deactivate 'ace-jump-mode)
+  (mac-ime-temporary-deactivate 'ace-jump-char-mode)
+  (mac-ime-temporary-deactivate 'ace-jump-word-mode)
+  (mac-ime-temporary-deactivate 'ace-jump-line-mode)
+  (mac-ime-temporary-deactivate 'ace-jump-move)
+  ;; ジャンプ完了（候補1つ、leaf選択）時
+  (add-hook 'ace-jump-mode-end-hook #'mac-ime--restore-input-source)
+  ;; キャンセル時
+  (advice-add 'ace-jump-done :after
+              (lambda (&rest _) (mac-ime--restore-input-source))))
+```
+
+なお、`mac-ime-disable` が解除するのは `mac-ime-temporary-deactivate-functions` に含まれる関数のadviceのみです。上記の設定は `mac-ime-disable` では解除されません。
+
 ## 検討事項いろいろ
 ソフト作成中に問題となった動作と、その対策方法についてまとめる
 

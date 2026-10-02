@@ -135,6 +135,42 @@ Additionally, commands like `C-u` (which require Roman input for subsequent keys
 
 Since this module needs to determine whether the macOS input source is Roman or non-Roman (such as Japanese), it matches the input source ID against a regular expression. If you use a custom IME and this detection does not work properly, configure `mac-ime-no-ime-input-source-regexp` so that it correctly identifies Roman input. You can retrieve the list of currently available input source IDs by running `(mac-ime-get-input-source-list)`.
 
+## Configuration Examples
+
+These are examples of turning the IME off for commands of external packages that `mac-ime` itself does not handle.
+
+### Turning the IME off while a function runs (simple example)
+
+`mac-ime-auto-deactivate` turns the IME off only while the specified function is running, and restores it after the function finishes. For example, to make input during `avy-goto-char-timer` Roman, use the following setting.
+
+```elisp
+(mac-ime-auto-deactivate 'avy-goto-char-timer)
+```
+
+### Packages that accept key input in subsequent commands (complex example: ace-jump-mode)
+
+`ace-jump-mode` only displays the candidates and sets up an overriding keymap, then returns from the function. The head-char input is handled by a subsequent command (`ace-jump-move`). Therefore, with `mac-ime-auto-deactivate`, the IME is restored before the head-char is typed. Also, the head-char may consist of two or more characters.
+
+`mac-ime-temporary-deactivate` turns the IME off before the function runs, and keeps it off after the function finishes, until just before the next command is executed. This property is required to accept the head-char, which is typed after the function has finished, in Roman, so `mac-ime-temporary-deactivate` is used.
+
+However, the IME is restored just before the next command is executed, so when the head-char has two or more characters, the IME is restored before the command for the first character (`ace-jump-move`) runs. Therefore `ace-jump-move` is also targeted, so that the IME is turned off again each time it runs. In addition, to prevent the IME from staying off until the next key input after the jump completes, the IME is explicitly restored at the end.
+
+```elisp
+(with-eval-after-load 'ace-jump-mode
+  (mac-ime-temporary-deactivate 'ace-jump-mode)
+  (mac-ime-temporary-deactivate 'ace-jump-char-mode)
+  (mac-ime-temporary-deactivate 'ace-jump-word-mode)
+  (mac-ime-temporary-deactivate 'ace-jump-line-mode)
+  (mac-ime-temporary-deactivate 'ace-jump-move)
+  ;; When the jump completes (single candidate, or a leaf is selected)
+  (add-hook 'ace-jump-mode-end-hook #'mac-ime--restore-input-source)
+  ;; When the jump is canceled
+  (advice-add 'ace-jump-done :after
+              (lambda (&rest _) (mac-ime--restore-input-source))))
+```
+
+Note that `mac-ime-disable` only removes the advice of functions included in `mac-ime-temporary-deactivate-functions`. The settings above are not removed by `mac-ime-disable`.
+
 ## Provided Functions
 
 ### Basic Operations

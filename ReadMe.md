@@ -124,6 +124,7 @@ C-\ (toggle-input-method) や cmd-space などで日本語入力状態にする�
 - `read-string`
 - `read-char`
 - `read-event`
+- `read-key`
 - `read-char-exclusive`
 - `read-char-choice`
 - `read-no-blanks-input`

@@ -434,6 +434,7 @@ is nil and `toggle-input-method' (or `activate-input-method') is called."
 (defcustom mac-ime-auto-deactivate-functions '((read-string . 4)
                                                (read-char . 1)
                                                (read-event . 1)
+                                               read-key
                                                (read-char-exclusive . 1)
                                                (read-char-choice . 2)
                                                (read-no-blanks-input . 2)

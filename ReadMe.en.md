@@ -117,6 +117,7 @@ By default, the following functions are configured:
 - `read-string`
 - `read-char`
 - `read-event`
+- `read-key`
 - `read-char-exclusive`
 - `read-char-choice`
 - `read-no-blanks-input`

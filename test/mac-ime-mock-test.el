@@ -244,6 +244,34 @@
     (advice-remove 'mac-ime-test-func (intern "mac-ime--auto-deactivate-mac-ime-test-func"))
     (fmakunbound 'mac-ime-test-func)))
 
+(ert-deftest mac-ime-auto-deactivate-read-key-test ()
+  "Test that IME is deactivated during `read-key'.
+Emacs 31 `perform-replace' reads the y/n answer with `read-key'."
+  (mac-ime-test-reset)
+  (should (memq 'read-key mac-ime-auto-deactivate-functions))
+  (mac-ime-enable)
+  (unwind-protect
+      (let* ((inner-source nil)
+             (capture (lambda (&rest _)
+                        (setq inner-source
+                              (mac-ime-internal-get-input-source)))))
+        (should (advice-member-p (intern "mac-ime--auto-deactivate-read-key")
+                                 'read-key))
+        ;; Setup: IME is ON
+        (mac-ime-internal-set-input-source "com.apple.inputmethod.Kotoeri.RomajiTyping")
+        (setq current-input-method mac-ime-input-method)
+        (setq mac-ime-last-off-input-source "com.apple.keylayout.US")
+        ;; Capture the input source inside the mac-ime advice.
+        (advice-add 'read-key :before capture '((depth . 100)))
+        (unwind-protect
+            (let ((unread-command-events (list ?y)))
+              (should (equal (read-key) ?y)))
+          (advice-remove 'read-key capture))
+        (should (equal inner-source "com.apple.keylayout.US"))
+        (should (equal (mac-ime-internal-get-input-source)
+                       "com.apple.inputmethod.Kotoeri.RomajiTyping")))
+    (mac-ime-disable)))
+
 (ert-deftest mac-ime-remove-auto-deactivate-test ()
   "Test that `mac-ime-remove-auto-deactivate' removes the advice."
   (mac-ime-test-reset)

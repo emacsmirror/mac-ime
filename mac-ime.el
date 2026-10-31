@@ -70,7 +70,7 @@
 (defconst mac-ime-version "0.2.3"
   "Version of the mac-ime package.")
 
-(defconst mac-ime-required-module-version "0.1.0"
+(defconst mac-ime-required-module-version "0.1.1"
   "Required exact version of the mac-ime-module.so.")
 
 (defcustom mac-ime-module-github-repo "ma0001/mac-ime"
@@ -769,10 +769,43 @@ off-source, others to on-source."
             (setq mac-ime-last-on-input-source current))))
       (setq mac-ime--current-input-source current))))
 
+(defun mac-ime--tty-frame-p ()
+  "Return non-nil if the selected frame is on a text terminal.
+The initial terminal of batch mode or of a daemon is not counted."
+  (and (eq (framep (selected-frame)) t)
+       (not (equal (terminal-name) "initial_terminal"))))
+
+(defun mac-ime-deactivate-ime-on-tty-prefix ()
+  "Deactivate IME while a prefix key is being typed on a text terminal.
+On a text terminal, the dynamic module cannot see key events, so this
+function checks the keys read so far by `this-single-command-keys'.
+It is called by `mac-ime-poll'."
+  (when (and (not mac-ime--saved-input-source)
+             (equal current-input-method mac-ime-input-method))
+    (let ((keys (this-single-command-keys)))
+      (when (and (> (length keys) 0)
+                 (keymapp (key-binding keys)))
+        (mac-ime--debug 2 "mac-ime-deactivate-ime-on-tty-prefix: Keys %S are bound to a keymap, deactivating IME" keys)
+        (mac-ime-deactivate-ime-temporarily)))))
+
+(defun mac-ime--tty-poll ()
+  "Handle the IME state of a text terminal frame.
+Deactivate IME on a prefix key and synchronize the input method with
+the input source, because the dynamic module does not report key
+events or input source changes on a text terminal."
+  (mac-ime-deactivate-ime-on-tty-prefix)
+  (when (and (frame-focus-state)
+             (eq (current-buffer) mac-ime--last-selected-buffer))
+    (mac-ime--check-input-source-change)
+    (mac-ime--sync-input-method)))
+
 (defun mac-ime-poll ()
-  "Poll the C module for events."
+  "Poll the C module for events.
+On a text terminal frame, also call `mac-ime--tty-poll'."
   (when (featurep 'mac-ime-module)
-    (mac-ime-internal-poll #'mac-ime-handler)))
+    (mac-ime-internal-poll #'mac-ime-handler)
+    (when (mac-ime--tty-frame-p)
+      (mac-ime--tty-poll))))
 
 (defun mac-ime-activate-input-method (input-method)
   "Activate the mac-ime input method.

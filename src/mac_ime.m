@@ -3,7 +3,7 @@
 #include "emacs-27.1/emacs-module.h"
 #include <pthread.h>
 
-#define MAC_IME_MODULE_VERSION "0.1.0"
+#define MAC_IME_MODULE_VERSION "0.1.1"
 __attribute__((used)) static const char *mac_ime_module_version_string = "mac-ime-module-version:" MAC_IME_MODULE_VERSION;
 
 int plugin_is_GPL_compatible;
@@ -144,8 +144,18 @@ static emacs_value Fmac_ime_poll(emacs_env *env, ptrdiff_t nargs, emacs_value ar
     return env->make_integer(env, [currentEvents count]);
 }
 
+// Without NSApp (e.g. Emacs on a text terminal), nothing runs the run loop,
+// so TIS keeps returning the input source cached in this process even after
+// it is changed elsewhere.  Run the run loop once to receive the change.
+static void refresh_input_source_state(void) {
+    if (NSApp == nil) {
+        CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0, true);
+    }
+}
+
 // --- Module Function: Get Input Source ---
 static emacs_value Fmac_ime_get_input_source(emacs_env *env, ptrdiff_t nargs, emacs_value args[], void *data) {
+    refresh_input_source_state();
     TISInputSourceRef currentSource = TISCopyCurrentKeyboardInputSource();
     if (!currentSource) {
         return env->intern(env, "nil");

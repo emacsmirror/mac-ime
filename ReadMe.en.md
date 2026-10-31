@@ -15,7 +15,7 @@ Since it controls the system IME using Emacs' dynamic module feature, you can in
 ## Requirements
 
 - macOS
-  - **Works only on GUI Emacs**. Since it uses `NSEvent` to monitor and hook key inputs, it does not work in terminal mode (`emacs -nw`).
+  - Mainly targets GUI Emacs.  In terminal mode (`emacs -nw`, `emacsclient -t`), only some features work (see [Terminal Mode](#terminal-mode)).
 - Emacs 27.1 or higher (with dynamic module support enabled)
 - Clang (for building)
 
@@ -107,6 +107,19 @@ Modifier keys are converted into an Emacs key the same way the NS port of Emacs 
 
 > [!NOTE]
 > The manual keycode settings via `mac-ime-prefix-keys` and `mac-ime-modifier-action-table` that existed in older versions have been deprecated and removed.
+
+### Terminal Mode
+
+In terminal mode (`emacs -nw`, `emacsclient -t`), key input is received by the terminal application such as Terminal.app, so the dynamic module cannot see key events.  Therefore, when the selected frame is on a text terminal, a timer runs the following every `mac-ime-poll-interval` seconds.
+
+- **IME deactivation on prefix keys**: If the keys typed so far (`this-single-command-keys`) are bound to a keymap, the IME is turned off temporarily.  As on GUI Emacs, it is restored right before the next command is executed.
+- **Synchronization with the input source**: When the IME is switched in the terminal application, the change of the input source is detected and `current-input-method` is synchronized.  It is not synchronized when the terminal reports focus events and the frame is known to be unfocused.
+
+The differences from GUI Emacs are as follows.
+
+- Since a timer is used, if you type the next key quickly after a prefix key, the key may be sent to the IME of the terminal application before the IME is turned off.
+- Whether the IME is converting cannot be determined.  However, keys typed while converting are handled by the IME of the terminal application and do not reach Emacs, so the IME is never turned off while converting.
+- When GUI frames and text terminal frames are mixed (e.g. with `emacsclient`), the behavior is switched according to the selected frame.
 
 ### IME Deactivation during Minibuffer Input
 

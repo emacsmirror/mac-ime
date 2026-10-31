@@ -440,8 +440,8 @@
   
   (unwind-protect
       (progn
-        ;; 1. If required-version matches exactly (0.1.0), it should pass
-        (let ((mac-ime-required-module-version "0.1.0"))
+        ;; 1. If required-version matches exactly (0.1.1), it should pass
+        (let ((mac-ime-required-module-version "0.1.1"))
           (mac-ime--load-module))
         
         ;; 2. If required-version does not match (newer: 0.2.0), it should raise an error
@@ -873,6 +873,82 @@ the elisp files in the repository, without the module file."
                 (lambda (&rest _) (setq called t)))))
     (mac-ime-handler 0 0 "a" "a" nil)
     (should called)))
+
+(defmacro mac-ime-test-with-tty (keys &rest body)
+  "Run BODY as if on a text terminal frame while KEYS are being read."
+  (declare (indent 1))
+  `(cl-letf (((symbol-function 'mac-ime--tty-frame-p) (lambda () t))
+             ((symbol-function 'frame-focus-state) (lambda (&optional _frame) t))
+             ((symbol-function 'this-single-command-keys) (lambda () ,keys)))
+     ,@body))
+
+(defun mac-ime-test-setup-ime-on ()
+  "Turn on the mock IME and the mac-ime input method."
+  (mac-ime-internal-set-input-source "com.apple.inputmethod.Kotoeri.RomajiTyping")
+  (setq current-input-method mac-ime-input-method
+        mac-ime-last-on-input-source "com.apple.inputmethod.Kotoeri.RomajiTyping"
+        mac-ime-last-off-input-source "com.apple.keylayout.US"
+        mac-ime--current-input-source "com.apple.inputmethod.Kotoeri.RomajiTyping"))
+
+(ert-deftest mac-ime-tty-prefix-deactivate-test ()
+  "Test that a prefix key on a text terminal deactivates IME temporarily."
+  (mac-ime-test-reset)
+  (mac-ime-test-setup-ime-on)
+  (mac-ime-test-with-tty [?\C-x]
+    (mac-ime-poll))
+  (should (equal (mac-ime-internal-get-input-source) "com.apple.keylayout.US"))
+  ;; The input method stays on while IME is temporarily off.
+  (should (equal current-input-method mac-ime-input-method))
+  (run-hooks 'pre-command-hook)
+  (should (equal (mac-ime-internal-get-input-source)
+                 "com.apple.inputmethod.Kotoeri.RomajiTyping")))
+
+(ert-deftest mac-ime-tty-no-deactivate-on-non-prefix-test ()
+  "Test that a complete key sequence on a text terminal keeps IME on."
+  (mac-ime-test-reset)
+  (mac-ime-test-setup-ime-on)
+  (dolist (keys (list [] [?\C-x ?\C-f] [?a]))
+    (mac-ime-test-with-tty keys
+      (mac-ime-poll))
+    (should (equal (mac-ime-internal-get-input-source)
+                   "com.apple.inputmethod.Kotoeri.RomajiTyping"))
+    (should-not mac-ime--saved-input-source)))
+
+(ert-deftest mac-ime-tty-prefix-ignored-on-graphic-frame-test ()
+  "Test that the text terminal prefix check is not used on a GUI frame."
+  (mac-ime-test-reset)
+  (mac-ime-test-setup-ime-on)
+  (cl-letf (((symbol-function 'mac-ime--tty-frame-p) (lambda () nil))
+            ((symbol-function 'this-single-command-keys) (lambda () [?\C-x])))
+    (mac-ime-poll))
+  (should (equal (mac-ime-internal-get-input-source)
+                 "com.apple.inputmethod.Kotoeri.RomajiTyping")))
+
+(ert-deftest mac-ime-tty-sync-input-method-test ()
+  "Test that an input source change is synchronized on a text terminal."
+  (mac-ime-test-reset)
+  (setq mac-ime--last-selected-buffer (current-buffer))
+  ;; The input source is changed outside of Emacs.
+  (mac-ime-internal-set-input-source "com.apple.inputmethod.Kotoeri.KanaTyping")
+  (mac-ime-test-with-tty []
+    (mac-ime-poll))
+  (should (equal current-input-method mac-ime-input-method))
+  (should (equal mac-ime-last-on-input-source
+                 "com.apple.inputmethod.Kotoeri.KanaTyping"))
+  (mac-ime-internal-set-input-source "com.apple.keylayout.US")
+  (mac-ime-test-with-tty []
+    (mac-ime-poll))
+  (should-not current-input-method))
+
+(ert-deftest mac-ime-tty-no-sync-without-focus-test ()
+  "Test that the input method is not synchronized without focus."
+  (mac-ime-test-reset)
+  (setq mac-ime--last-selected-buffer (current-buffer))
+  (mac-ime-internal-set-input-source "com.apple.inputmethod.Kotoeri.KanaTyping")
+  (mac-ime-test-with-tty []
+    (cl-letf (((symbol-function 'frame-focus-state) (lambda (&optional _frame) nil)))
+      (mac-ime-poll)))
+  (should-not current-input-method))
 
 (provide 'mac-ime-mock-test)
 

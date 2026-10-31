@@ -44,4 +44,32 @@
   (should (equal (mac-ime-internal-start) t))
   (should (equal (mac-ime-internal-stop) t)))
 
+(defun mac-ime-integration-test--set-in-other-process (source)
+  "Set the input source to SOURCE from another Emacs process."
+  (call-process (expand-file-name invocation-name invocation-directory)
+                nil nil nil "-Q" "-batch" "--eval"
+                (format "(progn (module-load %S) (mac-ime-internal-set-input-source %S))"
+                        (expand-file-name "mac-ime-module.so" default-directory)
+                        source)))
+
+(ert-deftest mac-ime-integration-external-change-test ()
+  "Test that an input source change by another process is seen.
+Without NSApp, as on a text terminal, the module must not return a
+stale input source."
+  (mac-ime--load-module)
+  (let* ((orig (mac-ime-internal-get-input-source))
+         (other (cl-find-if (lambda (s)
+                              (and (not (equal s orig))
+                                   (string-match-p "keylayout\\|inputmethod" s)))
+                            (mac-ime-internal-get-input-source-list))))
+    (if (not (and orig other))
+        (message "Skipping external change test (no other input source)")
+      (unwind-protect
+          (progn
+            (should (mac-ime-internal-set-input-source other))
+            (should (equal (mac-ime-internal-get-input-source) other))
+            (mac-ime-integration-test--set-in-other-process orig)
+            (should (equal (mac-ime-internal-get-input-source) orig)))
+        (mac-ime-internal-set-input-source orig)))))
+
 (provide 'mac-ime-integration-test)
